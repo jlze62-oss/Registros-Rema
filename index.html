@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#7C2D3E">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Registro Matrimonial">
+  <title>Registro Matrimonial</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="css/app.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:wght@500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<!-- ===== LOGIN SCREEN ===== -->
+<div id="screen-login" class="screen active">
+  <div class="login-bg">
+    <div class="login-card">
+      <div class="login-logo">
+        <div class="logo-ring">
+          <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+            <path d="M18 8C18 8 12 13 12 18C12 21.3 14.7 24 18 24C21.3 24 24 21.3 24 18C24 13 18 8 18 8Z" fill="#E8C4B8"/>
+            <path d="M10 18C10 18 6 22 8 26C9.5 29 13 30 16 28.5" stroke="#E8C4B8" stroke-width="1.5" stroke-linecap="round"/>
+            <path d="M26 18C26 18 30 22 28 26C26.5 29 23 30 20 28.5" stroke="#E8C4B8" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </div>
+      </div>
+      <h1 class="login-title">Registro<br>Matrimonial</h1>
+      <p class="login-sub">Gestión de eventos</p>
+
+      <div class="form-group">
+        <label>Usuario</label>
+        <input type="text" id="login-user" placeholder="tu@correo.com" autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label>Contraseña</label>
+        <input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password">
+      </div>
+      <div id="login-error" class="error-msg hidden">Usuario o contraseña incorrectos</div>
+      <button class="btn-primary full" id="btn-login" onclick="doLogin()">Ingresar</button>
+      <p class="login-hint">Contacta al administrador si no tienes acceso</p>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MAIN APP ===== -->
+<div id="screen-app" class="screen hidden">
+
+  <!-- Sidebar -->
+  <nav id="sidebar" class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">
+        <svg width="22" height="22" viewBox="0 0 36 36" fill="none">
+          <path d="M18 8C18 8 12 13 12 18C12 21.3 14.7 24 18 24C21.3 24 24 21.3 24 18C24 13 18 8 18 8Z" fill="#E8C4B8"/>
+          <path d="M10 18C10 18 6 22 8 26C9.5 29 13 30 16 28.5" stroke="#E8C4B8" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M26 18C26 18 30 22 28 26C26.5 29 23 30 20 28.5" stroke="#E8C4B8" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <span>Matrimonial</span>
+      </div>
+      <button class="sidebar-close" onclick="toggleSidebar()">✕</button>
+    </div>
+
+    <div class="sidebar-user">
+      <div class="user-avatar" id="nav-avatar">A</div>
+      <div>
+        <div class="user-name" id="nav-username">Admin</div>
+        <div class="user-role" id="nav-role">Administrador</div>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <a class="nav-item active" onclick="showView('dashboard')" data-view="dashboard">
+        <span class="nav-icon">⊞</span> Inicio
+      </a>
+      <a class="nav-item" onclick="showView('couples')" data-view="couples">
+        <span class="nav-icon">♡</span> Matrimonios
+      </a>
+      <a class="nav-item" onclick="showView('payments')" data-view="payments">
+        <span class="nav-icon">$</span> Pagos
+      </a>
+      <a class="nav-item" onclick="showView('documents')" data-view="documents">
+        <span class="nav-icon">⬜</span> Documentos
+      </a>
+      <a class="nav-item admin-only hidden" onclick="showView('config')" data-view="config">
+        <span class="nav-icon">⚙</span> Configuración
+      </a>
+      <a class="nav-item admin-only hidden" onclick="showView('users')" data-view="users">
+        <span class="nav-icon">👤</span> Usuarios
+      </a>
+    </nav>
+
+    <button class="btn-logout" onclick="doLogout()">Cerrar sesión</button>
+  </nav>
+
+  <!-- Overlay -->
+  <div id="sidebar-overlay" class="sidebar-overlay hidden" onclick="toggleSidebar()"></div>
+
+  <!-- Top bar -->
+  <header class="topbar">
+    <button class="hamburger" onclick="toggleSidebar()">
+      <span></span><span></span><span></span>
+    </button>
+    <h2 class="topbar-title" id="topbar-title">Inicio</h2>
+    <div class="topbar-actions">
+      <button class="btn-icon" id="btn-new-couple" onclick="openNewCoupleModal()" title="Nueva pareja">+</button>
+    </div>
+  </header>
+
+  <!-- Content area -->
+  <main class="content">
+
+    <!-- DASHBOARD VIEW -->
+    <div id="view-dashboard" class="view active">
+      <div class="event-banner" id="event-banner">
+        <div class="event-banner-text">
+          <div class="event-tag">Próximo evento</div>
+          <h2 id="event-name-banner">Cargando...</h2>
+          <p id="event-dates-banner"></p>
+        </div>
+        <div class="event-cost-badge" id="event-cost-banner"></div>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-icon rose">♡</div>
+          <div class="stat-val" id="stat-couples">—</div>
+          <div class="stat-lbl">Parejas inscritas</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon green">✓</div>
+          <div class="stat-val" id="stat-paid">—</div>
+          <div class="stat-lbl">Pagos completos</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon blue">⬜</div>
+          <div class="stat-val" id="stat-docs">—</div>
+          <div class="stat-lbl">Docs completos</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon amber">!</div>
+          <div class="stat-val" id="stat-pending">—</div>
+          <div class="stat-lbl">Pendientes pago</div>
+        </div>
+      </div>
+
+      <div class="card mt16">
+        <div class="card-header">
+          <span class="card-title">Resumen financiero</span>
+          <span class="pct-badge" id="pct-badge">0%</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+        <div class="finance-row">
+          <div class="finance-item green-bg">
+            <div class="finance-lbl">Total recaudado</div>
+            <div class="finance-val" id="total-collected">$0.00</div>
+          </div>
+          <div class="finance-item amber-bg">
+            <div class="finance-lbl">Saldo pendiente</div>
+            <div class="finance-val" id="total-pending">$0.00</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mt16">
+        <div class="card-header"><span class="card-title">Registros recientes</span></div>
+        <div id="recent-list" class="couple-list"></div>
+      </div>
+    </div>
+
+    <!-- COUPLES VIEW -->
+    <div id="view-couples" class="view hidden">
+      <div class="search-bar">
+        <input type="search" id="search-couples" placeholder="Buscar pareja..." oninput="filterCouples()">
+      </div>
+      <div class="filter-row">
+        <button class="filter-btn active" onclick="setFilter('all', this)">Todos</button>
+        <button class="filter-btn" onclick="setFilter('paid', this)">Pagado</button>
+        <button class="filter-btn" onclick="setFilter('partial', this)">Parcial</button>
+        <button class="filter-btn" onclick="setFilter('nopay', this)">Sin pago</button>
+      </div>
+      <div id="couples-list" class="couple-list"></div>
+      <div id="couples-empty" class="empty-state hidden">
+        <div class="empty-icon">♡</div>
+        <p>No hay parejas registradas aún</p>
+        <button class="btn-primary" onclick="openNewCoupleModal()">+ Registrar pareja</button>
+      </div>
+    </div>
+
+    <!-- PAYMENTS VIEW -->
+    <div id="view-payments" class="view hidden">
+      <div class="card">
+        <div class="card-header"><span class="card-title">Todos los pagos</span></div>
+        <div id="payments-list" class="couple-list"></div>
+      </div>
+    </div>
+
+    <!-- DOCUMENTS VIEW -->
+    <div id="view-documents" class="view hidden">
+      <div id="docs-list" class="couple-list"></div>
+    </div>
+
+    <!-- CONFIG VIEW (admin only) -->
+    <div id="view-config" class="view hidden">
+      <div class="card">
+        <div class="card-header"><span class="card-title">Configuración del evento</span></div>
+        <div class="form-group mt16">
+          <label>Nombre del evento</label>
+          <input type="text" id="cfg-event-name" placeholder="Ej: Encuentro Matrimonial 2025">
+        </div>
+        <div class="form-group">
+          <label>Fecha inicio</label>
+          <input type="date" id="cfg-date-start">
+        </div>
+        <div class="form-group">
+          <label>Fecha fin</label>
+          <input type="date" id="cfg-date-end">
+        </div>
+        <div class="form-group">
+          <label>Costo por pareja ($)</label>
+          <input type="number" id="cfg-cost" placeholder="3500">
+        </div>
+        <div class="form-group">
+          <label>Google Sheets ID</label>
+          <input type="text" id="cfg-sheet-id" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms">
+          <small class="form-hint">El ID está en la URL de tu hoja: docs.google.com/spreadsheets/d/<strong>ID</strong>/edit</small>
+        </div>
+        <div class="form-group">
+          <label>Google Apps Script URL</label>
+          <input type="text" id="cfg-script-url" placeholder="https://script.google.com/macros/s/...">
+          <small class="form-hint">URL del Web App desplegado desde Apps Script</small>
+        </div>
+        <button class="btn-primary full mt16" onclick="saveConfig()">Guardar configuración</button>
+        <div id="cfg-msg" class="success-msg hidden mt8">Configuración guardada</div>
+      </div>
+
+      <div class="card mt16">
+        <div class="card-header"><span class="card-title">Conexión Google Sheets</span></div>
+        <div class="conn-status" id="conn-status">
+          <span class="dot amber"></span> Sin configurar
+        </div>
+        <button class="btn-outline full mt16" onclick="testConnection()">Probar conexión</button>
+      </div>
+    </div>
+
+    <!-- USERS VIEW (admin only) -->
+    <div id="view-users" class="view hidden">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Usuarios del sistema</span>
+          <button class="btn-sm" onclick="openNewUserModal()">+ Agregar</button>
+        </div>
+        <div id="users-list" class="couple-list mt8"></div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ===== MODAL: Nueva pareja ===== -->
+<div id="modal-couple" class="modal-overlay hidden">
+  <div class="modal-sheet">
+    <div class="modal-header">
+      <h3 id="modal-couple-title">Nueva pareja</h3>
+      <button class="modal-close" onclick="closeModal('modal-couple')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="couple-id">
+
+      <div class="section-label">Evento</div>
+      <div class="form-group">
+        <label>Fecha del evento</label>
+        <input type="text" id="cp-event-date" readonly>
+      </div>
+      <div class="form-group">
+        <label>Fecha de registro</label>
+        <input type="date" id="cp-reg-date">
+      </div>
+
+      <div class="section-label mt16">Participantes</div>
+      <div class="form-row-2">
+        <div class="form-group">
+          <label>Nombre de él</label>
+          <input type="text" id="cp-him" placeholder="Nombre completo">
+        </div>
+        <div class="form-group">
+          <label>Nombre de ella</label>
+          <input type="text" id="cp-her" placeholder="Nombre completo">
+        </div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-group">
+          <label>Teléfono él</label>
+          <input type="tel" id="cp-tel-him" placeholder="555-123-4567">
+        </div>
+        <div class="form-group">
+          <label>Teléfono ella</label>
+          <input type="tel" id="cp-tel-her" placeholder="555-123-4567">
+        </div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-group">
+          <label>Email él</label>
+          <input type="email" id="cp-email-him" placeholder="correo@ejemplo.com">
+        </div>
+        <div class="form-group">
+          <label>Email ella</label>
+          <input type="email" id="cp-email-her" placeholder="correo@ejemplo.com">
+        </div>
+      </div>
+
+      <div id="pay-section">
+      <div class="section-label mt16">Pago inicial</div>
+      <div class="form-group">
+        <label>Cantidad recibida ($)</label>
+        <input type="number" id="cp-amount" placeholder="0.00" oninput="updatePaymentStatus()">
+      </div>
+      <div class="form-group">
+        <label>Persona que recibe el pago</label>
+        <input type="text" id="cp-received-by" placeholder="Nombre del colaborador">
+      </div>
+      <div class="pay-status-row">
+        <span class="pay-lbl">Costo total:</span>
+        <span class="pay-val" id="modal-cost">$0.00</span>
+      </div>
+      <div class="pay-status-row">
+        <span class="pay-lbl">Saldo pendiente:</span>
+        <span class="pay-val pending-val" id="modal-pending">$0.00</span>
+      </div>
+      </div>
+
+      <div class="section-label mt16">Documentos</div>
+      <div class="docs-upload-grid">
+        <div class="doc-upload-item" onclick="triggerUpload('doc-acta')">
+          <input type="file" id="doc-acta" accept="image/*,.pdf" onchange="handleDocUpload('acta', this)">
+          <div class="doc-upload-icon" id="icon-acta">📋</div>
+          <div class="doc-upload-label">Acta de matrimonio</div>
+          <div class="doc-status" id="status-acta">Sin cargar</div>
+        </div>
+        <div class="doc-upload-item" onclick="triggerUpload('doc-id')">
+          <input type="file" id="doc-id" accept="image/*,.pdf" onchange="handleDocUpload('id', this)">
+          <div class="doc-upload-icon" id="icon-id">🪪</div>
+          <div class="doc-upload-label">Identificación</div>
+          <div class="doc-status" id="status-id">Sin cargar</div>
+        </div>
+        <div class="doc-upload-item" onclick="triggerUpload('doc-photo')">
+          <input type="file" id="doc-photo" accept="image/*" onchange="handleDocUpload('photo', this)">
+          <div class="doc-upload-icon" id="icon-photo">📷</div>
+          <div class="doc-upload-label">Foto juntos</div>
+          <div class="doc-status" id="status-photo">Sin cargar</div>
+        </div>
+      </div>
+      <div id="doc-upload-note" class="form-hint mt8">Los documentos se guardan en Google Drive vinculado a tu hoja.</div>
+
+      <div class="form-group mt16">
+        <label>Comentarios</label>
+        <textarea id="cp-comments" rows="3" placeholder="Notas adicionales, evento futuro, etc."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" onclick="closeModal('modal-couple')">Cancelar</button>
+      <button class="btn-primary" id="btn-save-couple" onclick="saveCouple()">Guardar registro</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: Nuevo usuario ===== -->
+<div id="modal-user" class="modal-overlay hidden">
+  <div class="modal-sheet modal-sm">
+    <div class="modal-header">
+      <h3>Agregar usuario</h3>
+      <button class="modal-close" onclick="closeModal('modal-user')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Nombre completo</label>
+        <input type="text" id="u-name" placeholder="Nombre del colaborador">
+      </div>
+      <div class="form-group">
+        <label>Correo / Usuario</label>
+        <input type="email" id="u-email" placeholder="correo@ejemplo.com">
+      </div>
+      <div class="form-group">
+        <label>Contraseña</label>
+        <input type="password" id="u-pass" placeholder="Mínimo 6 caracteres">
+      </div>
+      <div class="form-group">
+        <label>Rol</label>
+        <select id="u-role">
+          <option value="registrador">Registrador</option>
+          <option value="admin">Administrador</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" onclick="closeModal('modal-user')">Cancelar</button>
+      <button class="btn-primary" onclick="saveUser()">Agregar usuario</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== DETAIL MODAL ===== -->
+<div id="modal-detail" class="modal-overlay hidden">
+  <div class="modal-sheet">
+    <div class="modal-header">
+      <h3 id="detail-title">Detalle</h3>
+      <button class="modal-close" onclick="closeModal('modal-detail')">✕</button>
+    </div>
+    <div class="modal-body" id="detail-body"></div>
+    <div class="modal-footer" style="flex-direction:column; gap:8px;">
+      <div style="display:flex; gap:8px; width:100%;">
+        <button class="btn-outline" style="flex:1" onclick="closeModal('modal-detail')">Cerrar</button>
+        <button class="btn-primary" style="flex:1" id="btn-edit-couple" onclick="editCouple()">Editar</button>
+      </div>
+      <button class="btn-pay" id="btn-add-payment" onclick="openPaymentModal()">+ Agregar pago</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: Nuevo pago ===== -->
+<div id="modal-payment" class="modal-overlay hidden">
+  <div class="modal-sheet modal-sm">
+    <div class="modal-header">
+      <h3>Registrar abono</h3>
+      <button class="modal-close" onclick="closeModal('modal-payment')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="pay-info-banner" id="pay-info-banner"></div>
+      <div class="form-group mt16">
+        <label>Monto del abono ($)</label>
+        <input type="number" id="pay-amount" placeholder="0.00" oninput="updatePaymentPreview()">
+      </div>
+      <div class="form-group">
+        <label>Fecha del pago</label>
+        <input type="date" id="pay-date">
+      </div>
+      <div class="form-group">
+        <label>Persona que recibe</label>
+        <input type="text" id="pay-received-by" placeholder="Nombre del colaborador">
+      </div>
+      <div class="form-group">
+        <label>Nota del abono</label>
+        <input type="text" id="pay-note" placeholder="Ej: 2do abono, pago en efectivo...">
+      </div>
+      <div class="pay-preview" id="pay-preview"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" onclick="closeModal('modal-payment')">Cancelar</button>
+      <button class="btn-primary" onclick="savePayment()">Guardar abono</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast hidden"></div>
+
+<script src="js/app.js"></script>
+</body>
+</html>
