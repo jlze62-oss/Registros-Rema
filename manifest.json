@@ -1,8 +1,8 @@
 {
-  "name": "Registro Matrimonial",
-  "short_name": "Matrimonial",
-  "description": "Gestión de eventos para matrimonios",
-  "start_url": "/index.html",
+  "name": "REMA — Restaurando Matrimonios",
+  "short_name": "REMA",
+  "description": "Gestión de inscripciones para eventos matrimoniales",
+  "start_url": "/Registros-Rema/index.html",
   "display": "standalone",
   "background_color": "#7C2D3E",
   "theme_color": "#7C2D3E",
