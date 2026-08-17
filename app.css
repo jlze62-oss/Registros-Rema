@@ -1,0 +1,31 @@
+
+/* ===== DOCUMENT ACTION BUTTONS ===== */
+.btn-doc-action {
+  border: none; border-radius: 6px;
+  padding: 3px 8px; font-size: 11px; cursor: pointer; font-family: inherit;
+}
+.btn-view { background: #EAF1FB; color: #1B5FA8; }
+.btn-upload { background: #F0E8E5; color: #7C2D3E; }
+.btn-replace { background: #F5F5F5; color: #888; }
+
+/* ===== DOC DROP ZONE ===== */
+.doc-drop-zone {
+  border: 2px dashed #D0C8C4; border-radius: 16px;
+  padding: 32px 20px; text-align: center; cursor: pointer;
+  background: #FAFAFA; transition: border-color 0.2s, background 0.2s;
+}
+.doc-drop-zone:hover { border-color: #7C2D3E; background: #FCEEF0; }
+
+/* ===== DELETE BUTTON ===== */
+.btn-delete {
+  width: 100%;
+  background: none;
+  border: 1.5px solid #E0D0D0;
+  color: #C0392B;
+  border-radius: 12px;
+  padding: 11px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.btn-delete:hover { background: #FCEEF0; }
