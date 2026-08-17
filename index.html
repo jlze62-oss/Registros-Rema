@@ -418,6 +418,49 @@
   </div>
 </div>
 
+<!-- ===== MODAL: Editar abono (admin) ===== -->
+<div id="modal-edit-payment" class="modal-overlay hidden">
+  <div class="modal-sheet modal-sm">
+    <div class="modal-header">
+      <h3>✏️ Editar abono</h3>
+      <button class="modal-close" onclick="closeModal('modal-edit-payment')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="edit-pay-couple-id">
+      <input type="hidden" id="edit-pay-id">
+      <div class="form-group">
+        <label>Monto ($)</label>
+        <input type="number" id="edit-pay-amount" placeholder="0.00">
+      </div>
+      <div class="form-group">
+        <label>Fecha del pago</label>
+        <input type="date" id="edit-pay-date">
+      </div>
+      <div class="form-row-2">
+        <div class="form-group">
+          <label>Forma de pago</label>
+          <select id="edit-pay-method">
+            <option value="efectivo">💵 Efectivo</option>
+            <option value="transferencia">🏦 Transferencia</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Recibió el pago</label>
+          <input type="text" id="edit-pay-received-by" placeholder="Nombre">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Nota</label>
+        <input type="text" id="edit-pay-note" placeholder="Ej: 2do abono, cheque, etc.">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" onclick="closeModal('modal-edit-payment')">Cancelar</button>
+      <button class="btn-primary" onclick="saveEditPayment()">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== MODAL: Confirmar eliminación ===== -->
 <div id="modal-delete-confirm" class="modal-overlay hidden">
   <div class="modal-sheet modal-sm">

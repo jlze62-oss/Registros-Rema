@@ -313,12 +313,16 @@ function renderDetailModal(c) {
     : '<div class="payment-history">' + payments.map((p, i) => {
         const acum = payments.slice(0, i + 1).reduce((s, x) => s + x.amount, 0);
         const icon = p.method === 'transferencia' ? '🏦' : '💵';
+        const isAdmin = currentUser && currentUser.role === 'admin';
         return '<div class="payment-item">' +
           '<div class="payment-dot ' + (i === 0 ? 'first' : '') + '"></div>' +
           '<div class="payment-info">' +
             '<div style="display:flex;justify-content:space-between;align-items:center;">' +
               '<div class="payment-amount">' + icon + ' $' + fmtMoney(p.amount) + '</div>' +
-              '<button onclick="deletePayment(\'' + c.id + '\',\'' + p.id + '\')" style="background:none;border:none;color:#ddd;font-size:16px;cursor:pointer;padding:0 0 0 8px;">✕</button>' +
+              '<div style="display:flex;gap:6px;">' +
+                (isAdmin ? '<button onclick="openEditPaymentModal(\'' + c.id + '\',\'' + p.id + '\')" style="background:#EAF1FB;border:none;border-radius:6px;padding:3px 8px;font-size:11px;color:#1B5FA8;cursor:pointer;">✏️ Editar</button>' : '') +
+                (isAdmin ? '<button onclick="deletePayment(\'' + c.id + '\',\'' + p.id + '\')" style="background:none;border:none;color:#ddd;font-size:16px;cursor:pointer;padding:0 0 0 4px;">✕</button>' : '') +
+              '</div>' +
             '</div>' +
             '<div class="payment-meta">' + formatDate(p.date) + ' · ' + esc(p.receivedBy || '—') + ' · ' + (p.method === 'transferencia' ? 'Transferencia' : 'Efectivo') + '</div>' +
             (p.note ? '<div class="payment-note">"' + esc(p.note) + '"</div>' : '') +
@@ -452,6 +456,57 @@ function saveSingleDoc() {
 }
 
 // ===== MODAL DE PAGO =====
+function openEditPaymentModal(coupleId, paymentId) {
+  const c = couples.find(x => x.id === coupleId);
+  if (!c) return;
+  const p = (c.payments || []).find(x => x.id === paymentId);
+  if (!p) return;
+  detailCoupleId = coupleId;
+
+  document.getElementById('edit-pay-couple-id').value = coupleId;
+  document.getElementById('edit-pay-id').value = paymentId;
+  document.getElementById('edit-pay-amount').value = p.amount;
+  document.getElementById('edit-pay-date').value = p.date;
+  document.getElementById('edit-pay-method').value = p.method || 'efectivo';
+  document.getElementById('edit-pay-received-by').value = p.receivedBy || '';
+  document.getElementById('edit-pay-note').value = p.note || '';
+  closeModal('modal-detail');
+  document.getElementById('modal-edit-payment').classList.remove('hidden');
+}
+
+function saveEditPayment() {
+  const coupleId = document.getElementById('edit-pay-couple-id').value;
+  const paymentId = document.getElementById('edit-pay-id').value;
+  const amount = parseFloat(document.getElementById('edit-pay-amount').value);
+  const date = document.getElementById('edit-pay-date').value;
+  const method = document.getElementById('edit-pay-method').value;
+  const receivedBy = document.getElementById('edit-pay-received-by').value.trim();
+  const note = document.getElementById('edit-pay-note').value.trim();
+
+  if (!amount || amount <= 0) { showToast('Ingresa un monto válido', 'error'); return; }
+  if (!date) { showToast('Selecciona la fecha', 'error'); return; }
+  if (!receivedBy) { showToast('Indica quién recibió el pago', 'error'); return; }
+
+  const cIdx = couples.findIndex(c => c.id === coupleId);
+  if (cIdx === -1) return;
+  const pIdx = couples[cIdx].payments.findIndex(p => p.id === paymentId);
+  if (pIdx === -1) return;
+
+  couples[cIdx].payments[pIdx] = {
+    ...couples[cIdx].payments[pIdx],
+    amount, date, method, receivedBy, note,
+    editedBy: currentUser.name,
+    editedAt: new Date().toISOString(),
+  };
+  couples[cIdx].amount = couples[cIdx].payments.reduce((s, p) => s + (p.amount || 0), 0);
+  saveToStorage();
+  closeModal('modal-edit-payment');
+  setTimeout(() => { openDetail(coupleId); showToast('Abono actualizado ✓', 'success'); }, 200);
+  refreshDashboard();
+  renderCouples();
+  renderPayments();
+}
+
 function openPaymentModal() {
   const c = couples.find(x => x.id === detailCoupleId);
   if (!c) return;
