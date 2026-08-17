@@ -424,6 +424,29 @@
   </div>
 </div>
 
+<!-- ===== MODAL: Confirmar eliminación ===== -->
+<div id="modal-delete-confirm" class="modal-overlay hidden">
+  <div class="modal-sheet modal-sm">
+    <div class="modal-header">
+      <h3 style="color:#C0392B">⚠️ Eliminar registro</h3>
+      <button class="modal-close" onclick="closeModal('modal-delete-confirm')">✕</button>
+    </div>
+    <div class="modal-body" style="text-align:center;padding:24px 20px;">
+      <div style="font-size:40px;margin-bottom:16px">🗑️</div>
+      <p style="font-size:15px;font-weight:500;color:#1A1A1A;margin-bottom:8px">¿Eliminar este registro?</p>
+      <p style="font-size:14px;font-weight:600;color:#7C2D3E;margin-bottom:6px" id="delete-confirm-name"></p>
+      <p style="font-size:13px;color:#888;margin-bottom:20px" id="delete-confirm-detail"></p>
+      <div style="background:#FCEEF0;border-radius:10px;padding:12px;font-size:13px;color:#C0392B;">
+        Esta acción <strong>no se puede deshacer</strong>.<br>Se eliminará el registro y todos sus abonos.
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" style="flex:1" onclick="closeModal('modal-delete-confirm')">Cancelar</button>
+      <button style="flex:1;background:#C0392B;color:#fff;border:none;border-radius:12px;padding:13px;font-size:15px;font-weight:500;cursor:pointer;" onclick="confirmDeleteCouple()">Sí, eliminar</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast" class="toast hidden"></div>
 <script src="js/app.js"></script>
 </body>

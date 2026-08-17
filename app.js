@@ -298,8 +298,9 @@ function openDetail(id) {
 function renderDetailModal(c) {
   document.getElementById('detail-title').textContent = c.him + ' & ' + c.her;
   const cost = config.cost || 0;
-  const payments = c.payments || [];
-  const totalPaid = getTotalPaid(c);
+  // Asegurar que payments siempre sea array válido
+  const payments = (c.payments || []).filter(p => p && p.amount > 0);
+  const totalPaid = payments.reduce((s, p) => s + (p.amount || 0), 0) || (c.amount || 0);
   const pending = Math.max(0, cost - totalPaid);
   const docsStatus = getDocsStatus(c);
   const d = c.docs || {};
@@ -517,9 +518,19 @@ function savePayment() {
 function deleteCouple() {
   const c = couples.find(x => x.id === detailCoupleId);
   if (!c) return;
-  if (!confirm('¿Eliminar el registro de ' + c.him + ' & ' + c.her + '?\n\nEsta acción no se puede deshacer.')) return;
+
+  // Mostrar modal de confirmación
+  const totalPaid = getTotalPaid(c);
+  document.getElementById('delete-confirm-name').textContent = c.him + ' & ' + c.her;
+  document.getElementById('delete-confirm-detail').textContent =
+    c.payments.length + ' abono(s) · $' + fmtMoney(totalPaid) + ' pagado';
+  document.getElementById('modal-delete-confirm').classList.remove('hidden');
+}
+
+function confirmDeleteCouple() {
   couples = couples.filter(x => x.id !== detailCoupleId);
   saveToStorage();
+  closeModal('modal-delete-confirm');
   closeModal('modal-detail');
   showToast('Registro eliminado', '');
   refreshDashboard();
