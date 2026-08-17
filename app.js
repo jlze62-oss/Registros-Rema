@@ -714,7 +714,11 @@ function renderUsers() {
     '<div class="user-item">' +
       '<div class="user-avatar">' + esc(u.name.charAt(0).toUpperCase()) + '</div>' +
       '<div class="user-item-info"><div class="user-item-name">' + esc(u.name) + '</div><div class="user-item-email">' + esc(u.email) + '</div></div>' +
-      '<span class="badge ' + (u.role === 'admin' ? 'badge-admin' : 'badge-reg') + '">' + (u.role === 'admin' ? 'Admin' : 'Registrador') + '</span>' +
+      '<div style="display:flex;align-items:center;gap:8px;">' +
+        '<span class="badge ' + (u.role === 'admin' ? 'badge-admin' : 'badge-reg') + '">' + (u.role === 'admin' ? 'Admin' : 'Registrador') + '</span>' +
+        '<button onclick="openEditUserModal(' + u.id + ')" style="background:#F0E8E5;border:none;border-radius:8px;padding:6px 10px;font-size:12px;color:#7C2D3E;cursor:pointer;">✏️</button>' +
+        '<button onclick="deleteUser(' + u.id + ')" style="background:#FCEEF0;border:none;border-radius:8px;padding:6px 10px;font-size:12px;color:#C0392B;cursor:pointer;">🗑</button>' +
+      '</div>' +
     '</div>'
   ).join('');
 }
@@ -722,21 +726,78 @@ function renderUsers() {
 function openNewUserModal() {
   ['u-name','u-email','u-pass'].forEach(f => document.getElementById(f).value = '');
   document.getElementById('u-role').value = 'registrador';
+  document.getElementById('u-id').value = '';
+  document.getElementById('u-pass-hint').textContent = 'Mínimo 6 caracteres';
+  document.getElementById('modal-user-title').textContent = 'Agregar usuario';
   document.getElementById('modal-user').classList.remove('hidden');
 }
 
+function openEditUserModal(userId) {
+  const u = users.find(x => x.id === userId);
+  if (!u) return;
+  document.getElementById('u-id').value = u.id;
+  document.getElementById('u-name').value = u.name;
+  document.getElementById('u-email').value = u.email;
+  document.getElementById('u-pass').value = '';
+  document.getElementById('u-role').value = u.role;
+  document.getElementById('u-pass-hint').textContent = 'Déjala en blanco para no cambiarla';
+  document.getElementById('modal-user-title').textContent = 'Editar usuario';
+  document.getElementById('modal-user').classList.remove('hidden');
+}
+
+function deleteUser(userId) {
+  const u = users.find(x => x.id === userId);
+  if (!u) return;
+  if (u.email === currentUser.email) { showToast('No puedes eliminarte a ti mismo', 'error'); return; }
+  if (!confirm('¿Eliminar al usuario ' + u.name + '?')) return;
+  users = users.filter(x => x.id !== userId);
+  saveUsers();
+  renderUsers();
+  showToast('Usuario eliminado', '');
+}
+
 function saveUser() {
+  const id = document.getElementById('u-id').value;
   const name = document.getElementById('u-name').value.trim();
   const email = document.getElementById('u-email').value.trim();
   const pass = document.getElementById('u-pass').value;
   const role = document.getElementById('u-role').value;
-  if (!name || !email || !pass) { showToast('Completa todos los campos', 'error'); return; }
-  if (pass.length < 6) { showToast('Contraseña mínimo 6 caracteres', 'error'); return; }
-  if (users.find(u => u.email.toLowerCase() === email.toLowerCase())) { showToast('Ya existe ese usuario', 'error'); return; }
-  users.push({ id: Date.now(), name, email, password: pass, role });
-  saveUsers(); renderUsers();
+  if (!name || !email) { showToast('Completa nombre y usuario', 'error'); return; }
+
+  if (id) {
+    // Editar usuario existente
+    const idx = users.findIndex(u => u.id == id);
+    if (idx === -1) return;
+    // Verificar email único (excepto el mismo usuario)
+    if (users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.id != id)) {
+      showToast('Ya existe un usuario con ese correo', 'error'); return;
+    }
+    if (pass && pass.length < 6) { showToast('Contraseña mínimo 6 caracteres', 'error'); return; }
+    users[idx].name = name;
+    users[idx].email = email;
+    users[idx].role = role;
+    if (pass) users[idx].password = pass;
+    // Si editamos el usuario actual, actualizar sesión
+    if (users[idx].id === currentUser.id) {
+      currentUser = { ...users[idx] };
+      sessionStorage.setItem('rm_session', JSON.stringify(currentUser));
+      document.getElementById('nav-avatar').textContent = currentUser.name.charAt(0).toUpperCase();
+      document.getElementById('nav-username').textContent = currentUser.name;
+    }
+    showToast('Usuario actualizado ✓', 'success');
+  } else {
+    // Nuevo usuario
+    if (!pass) { showToast('Ingresa una contraseña', 'error'); return; }
+    if (pass.length < 6) { showToast('Contraseña mínimo 6 caracteres', 'error'); return; }
+    if (users.find(u => u.email.toLowerCase() === email.toLowerCase())) {
+      showToast('Ya existe ese usuario', 'error'); return;
+    }
+    users.push({ id: Date.now(), name, email, password: pass, role });
+    showToast('Usuario agregado ✓', 'success');
+  }
+  saveUsers();
+  renderUsers();
   closeModal('modal-user');
-  showToast('Usuario agregado ✓', 'success');
 }
 
 // ===== GOOGLE SHEETS SYNC =====

@@ -385,22 +385,27 @@
   </div>
 </div>
 
-<!-- ===== MODAL: Nuevo usuario ===== -->
+<!-- ===== MODAL: Nuevo/Editar usuario ===== -->
 <div id="modal-user" class="modal-overlay hidden">
   <div class="modal-sheet modal-sm">
     <div class="modal-header">
-      <h3>Agregar usuario</h3>
+      <h3 id="modal-user-title">Agregar usuario</h3>
       <button class="modal-close" onclick="closeModal('modal-user')">✕</button>
     </div>
     <div class="modal-body">
+      <input type="hidden" id="u-id">
       <div class="form-group"><label>Nombre completo</label><input type="text" id="u-name" placeholder="Nombre del colaborador"></div>
       <div class="form-group"><label>Usuario (correo)</label><input type="email" id="u-email" placeholder="correo@ejemplo.com"></div>
-      <div class="form-group"><label>Contraseña</label><input type="password" id="u-pass" placeholder="Mínimo 6 caracteres"></div>
+      <div class="form-group">
+        <label>Contraseña</label>
+        <input type="password" id="u-pass" placeholder="••••••••">
+        <small class="form-hint" id="u-pass-hint">Mínimo 6 caracteres</small>
+      </div>
       <div class="form-group"><label>Rol</label><select id="u-role"><option value="registrador">Registrador</option><option value="admin">Administrador</option></select></div>
     </div>
     <div class="modal-footer">
       <button class="btn-outline" onclick="closeModal('modal-user')">Cancelar</button>
-      <button class="btn-primary" onclick="saveUser()">Agregar usuario</button>
+      <button class="btn-primary" onclick="saveUser()">Guardar</button>
     </div>
   </div>
 </div>
