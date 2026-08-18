@@ -1,5 +1,5 @@
-// Service Worker v3 — rutas relativas para GitHub Pages
-const CACHE = 'rm-v3';
+// Service Worker v4 — fuerza actualización
+const CACHE = 'rm-v4';
 
 self.addEventListener('install', e => {
   self.skipWaiting();
@@ -14,7 +14,6 @@ self.addEventListener('activate', e => {
   self.clients.claim();
 });
 
-// Network first — siempre intenta red, caché solo como respaldo
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   e.respondWith(
