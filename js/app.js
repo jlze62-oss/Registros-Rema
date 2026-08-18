@@ -108,7 +108,7 @@ function showView(view) {
   if (viewEl) { viewEl.classList.add('active'); viewEl.style.display = 'block'; }
   const navEl = document.querySelector('[data-view="' + view + '"]');
   if (navEl) navEl.classList.add('active');
-  const titles = { dashboard: 'Inicio', couples: 'Matrimonios', payments: 'Pagos', documents: 'Documentos', config: 'Configuración', users: 'Usuarios' };
+  const titles = { dashboard: 'Inicio', couples: 'Matrimonios', payments: 'Pagos', documents: 'Documentos', config: 'Configuración', users: 'Usuarios', becas: 'Becas' };
   document.getElementById('topbar-title').textContent = titles[view] || view;
   document.getElementById('btn-new-couple').style.display = ['couples', 'dashboard'].includes(view) ? 'flex' : 'none';
   toggleSidebar(false);
@@ -118,6 +118,7 @@ function showView(view) {
   if (view === 'payments') renderPayments();
   if (view === 'documents') renderDocuments();
   if (view === 'users') renderUsers();
+  if (view === 'becas') renderBecas();
 }
 
 function toggleSidebar(forceOpen) {
@@ -193,11 +194,13 @@ function coupleItemHTML(c) {
   const docBadge = docsStatus.complete
     ? '<span class="badge badge-docs-ok" style="margin-left:4px">Docs ✓</span>'
     : '<span class="badge badge-docs-pend" style="margin-left:4px">Docs ' + docsStatus.done + '/3</span>';
+  const becaBadge = c.beca ? '<span class="badge badge-becada" style="margin-left:4px">🎓</span>' : '';
+  const penBadge = c.penalizacion ? '<span class="badge badge-penalizada" style="margin-left:4px">⚠️</span>' : '';
   return '<div class="couple-item" onclick="openDetail(\'' + c.id + '\')">' +
     '<div class="couple-avatar">♡</div>' +
     '<div class="couple-info">' +
       '<div class="couple-names">' + esc(c.him) + ' & ' + esc(c.her) + '</div>' +
-      '<div class="couple-meta">' + formatDate(c.regDate) + docBadge + '</div>' +
+      '<div class="couple-meta">' + formatDate(c.regDate) + docBadge + becaBadge + penBadge + '</div>' +
     '</div>' +
     '<div class="couple-right">' +
       '<div class="couple-amount">$' + fmtMoney(paid) + '</div>' +
@@ -383,7 +386,17 @@ function renderDetailModal(c) {
     '<div class="section-label mt16">Datos del registro</div>' +
     '<div class="detail-row"><span class="detail-lbl">Fecha registro</span><span class="detail-val">' + formatDate(c.regDate) + '</span></div>' +
     '<div class="detail-row"><span class="detail-lbl">Evento</span><span class="detail-val">' + esc(c.eventDate || '—') + '</span></div>' +
-    '<div class="detail-row"><span class="detail-lbl">Registrado por</span><span class="detail-val">' + esc(c.createdBy || '—') + '</span></div>';
+    '<div class="detail-row"><span class="detail-lbl">Registrado por</span><span class="detail-val">' + esc(c.createdBy || '—') + '</span></div>' +
+    (c.beca ? '<div class="section-label mt16" style="color:#1E7B3C">🎓 Beca asignada</div>' +
+      '<div class="detail-row"><span class="detail-lbl">Monto beca</span><span class="detail-val" style="color:#1E7B3C">$' + fmtMoney(c.beca.amount) + '</span></div>' +
+      '<div class="detail-row"><span class="detail-lbl">Motivo</span><span class="detail-val">' + esc(c.beca.reason || '—') + '</span></div>' +
+      '<div class="detail-row"><span class="detail-lbl">Asignada por</span><span class="detail-val">' + esc(c.beca.assignedBy || '—') + '</span></div>' +
+      '<div class="detail-row"><span class="detail-lbl">Fecha</span><span class="detail-val">' + formatDate(c.beca.date) + '</span></div>' : '') +
+    (c.penalizacion ? '<div class="section-label mt16" style="color:#B06000">⚠️ Penalización</div>' +
+      '<div class="detail-row"><span class="detail-lbl">Monto</span><span class="detail-val" style="color:#B06000">$' + fmtMoney(c.penalizacion.amount) + '</span></div>' +
+      '<div class="detail-row"><span class="detail-lbl">Motivo</span><span class="detail-val">' + esc(c.penalizacion.reason || '—') + '</span></div>' +
+      '<div class="detail-row"><span class="detail-lbl">Notas</span><span class="detail-val">' + esc(c.penalizacion.notes || '—') + '</span></div>' +
+      '<div class="detail-row"><span class="detail-lbl">Fecha</span><span class="detail-val">' + formatDate(c.penalizacion.date) + '</span></div>' : '');
 }
 
 // ===== VER DOCUMENTO =====
@@ -568,6 +581,209 @@ function savePayment() {
   refreshDashboard();
   renderCouples();
   renderPayments();
+}
+
+// ===== BECAS / FONDO =====
+function getFund() {
+  return JSON.parse(localStorage.getItem('rm_fund') || '{"movements":[]}');
+}
+function saveFund(fund) {
+  localStorage.setItem('rm_fund', JSON.stringify(fund));
+}
+function getFundBalance() {
+  const fund = getFund();
+  return fund.movements.reduce((s, m) => m.type === 'out' ? s - m.amount : s + m.amount, 0);
+}
+
+function renderBecas() {
+  const fund = getFund();
+  const totalIn = fund.movements.filter(m => m.type === 'in').reduce((s, m) => s + m.amount, 0);
+  const totalOut = fund.movements.filter(m => m.type === 'out').reduce((s, m) => s + m.amount, 0);
+  const balance = totalIn - totalOut;
+
+  document.getElementById('fund-balance').textContent = '$' + fmtMoney(balance);
+  document.getElementById('fund-in').textContent = '$' + fmtMoney(totalIn);
+  document.getElementById('fund-out').textContent = '$' + fmtMoney(totalOut);
+  document.getElementById('fund-date').value = new Date().toISOString().split('T')[0];
+
+  // Movimientos
+  const movEl = document.getElementById('fund-movements');
+  if (fund.movements.length === 0) {
+    movEl.innerHTML = '<div style="color:#aaa;font-size:13px;padding:8px 0;">Sin movimientos aún.</div>';
+  } else {
+    const sorted = [...fund.movements].sort((a, b) => new Date(b.date) - new Date(a.date));
+    movEl.innerHTML = sorted.map(m => {
+      const isIn = m.type === 'in';
+      const icons = { donacion: '🎁', penalizacion: '💸', beca: '🎓' };
+      const icon = icons[m.subtype] || (isIn ? '💰' : '🎓');
+      return '<div class="fund-movement-item">' +
+        '<div class="fund-movement-icon">' + icon + '</div>' +
+        '<div class="fund-movement-info">' +
+          '<div class="fund-movement-desc">' + esc(m.description) + '</div>' +
+          '<div class="fund-movement-meta">' + formatDate(m.date) + ' · ' + esc(m.registeredBy || '') + '</div>' +
+        '</div>' +
+        '<div class="fund-movement-amt ' + (isIn ? 'in' : 'out') + '">' + (isIn ? '+' : '−') + '$' + fmtMoney(m.amount) + '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  // Parejas becadas
+  const scholarsEl = document.getElementById('fund-scholars');
+  const becadas = couples.filter(c => c.beca);
+  if (becadas.length === 0) {
+    scholarsEl.innerHTML = '<div style="color:#aaa;font-size:13px;padding:8px 0;">Sin becas asignadas aún.</div>';
+  } else {
+    scholarsEl.innerHTML = becadas.map(c =>
+      '<div class="couple-item" onclick="openDetail(\'' + c.id + '\')">' +
+        '<div class="couple-avatar" style="background:#EAF7EE;color:#1E7B3C;font-size:18px">🎓</div>' +
+        '<div class="couple-info">' +
+          '<div class="couple-names">' + esc(c.him) + ' & ' + esc(c.her) + '</div>' +
+          '<div class="couple-meta">Beca: $' + fmtMoney(c.beca.amount) + ' · ' + esc(c.beca.reason || '') + '</div>' +
+        '</div>' +
+        '<span class="badge badge-becada">Becada</span>' +
+      '</div>'
+    ).join('');
+  }
+}
+
+function addFundMovement() {
+  const type = document.getElementById('fund-type').value;
+  const amount = parseFloat(document.getElementById('fund-amount').value);
+  const origin = document.getElementById('fund-origin').value.trim();
+  const date = document.getElementById('fund-date').value;
+  if (!amount || amount <= 0) { showToast('Ingresa un monto válido', 'error'); return; }
+  if (!origin) { showToast('Ingresa el origen o descripción', 'error'); return; }
+  if (!date) { showToast('Selecciona la fecha', 'error'); return; }
+  const fund = getFund();
+  fund.movements.push({
+    id: 'F' + Date.now(),
+    type: 'in',
+    subtype: type,
+    amount, date,
+    description: (type === 'penalizacion' ? '💸 Penalización: ' : '🎁 Donación: ') + origin,
+    registeredBy: currentUser.name,
+    registeredAt: new Date().toISOString(),
+  });
+  saveFund(fund);
+  document.getElementById('fund-amount').value = '';
+  document.getElementById('fund-origin').value = '';
+  renderBecas();
+  showToast('Movimiento registrado ✓', 'success');
+}
+
+// ===== MODAL BECA =====
+function openBecaModal() {
+  const c = couples.find(x => x.id === detailCoupleId);
+  if (!c) return;
+  const cost = config.cost || 0;
+  const totalPaid = getTotalPaid(c);
+  const faltante = Math.max(0, cost - totalPaid);
+  const balance = getFundBalance();
+  document.getElementById('beca-info-banner').innerHTML =
+    '<div class="pi-name">♡ ' + esc(c.him) + ' & ' + esc(c.her) + '</div>' +
+    '<div class="pi-row"><span class="pi-lbl">Total pagado</span><span class="pi-val green">$' + fmtMoney(totalPaid) + '</span></div>' +
+    '<div class="pi-row"><span class="pi-lbl">Faltante</span><span class="pi-val amber">$' + fmtMoney(faltante) + '</span></div>';
+  document.getElementById('beca-fund-banner').textContent = 'Saldo disponible en fondo: $' + fmtMoney(balance);
+  document.getElementById('beca-amount').value = faltante > 0 ? faltante.toFixed(2) : '';
+  document.getElementById('beca-reason').value = '';
+  closeModal('modal-detail');
+  document.getElementById('modal-beca').classList.remove('hidden');
+}
+
+function saveBeca() {
+  const amount = parseFloat(document.getElementById('beca-amount').value);
+  const reason = document.getElementById('beca-reason').value.trim();
+  if (!amount || amount <= 0) { showToast('Ingresa un monto válido', 'error'); return; }
+  const balance = getFundBalance();
+  if (amount > balance) { showToast('Saldo insuficiente en el fondo ($' + fmtMoney(balance) + ')', 'error'); return; }
+  const idx = couples.findIndex(c => c.id === detailCoupleId);
+  if (idx === -1) return;
+  const c = couples[idx];
+
+  // Registrar beca en la pareja
+  const becaPayment = {
+    id: 'B' + Date.now(),
+    coupleId: detailCoupleId,
+    amount, date: new Date().toISOString().split('T')[0],
+    receivedBy: 'Fondo REMA',
+    method: 'beca',
+    note: '🎓 Beca REMA' + (reason ? ': ' + reason : ''),
+    registeredBy: currentUser.name,
+    registeredAt: new Date().toISOString(),
+  };
+  if (!couples[idx].payments) couples[idx].payments = [];
+  couples[idx].payments.push(becaPayment);
+  couples[idx].amount = couples[idx].payments.reduce((s, p) => s + (p.amount || 0), 0);
+  couples[idx].beca = { amount, reason, date: becaPayment.date, assignedBy: currentUser.name };
+  saveToStorage();
+
+  // Registrar salida del fondo
+  const fund = getFund();
+  fund.movements.push({
+    id: 'FO' + Date.now(),
+    type: 'out',
+    subtype: 'beca',
+    amount, date: becaPayment.date,
+    description: '🎓 Beca: ' + c.him + ' & ' + c.her + (reason ? ' — ' + reason : ''),
+    registeredBy: currentUser.name,
+    registeredAt: new Date().toISOString(),
+  });
+  saveFund(fund);
+  closeModal('modal-beca');
+  setTimeout(() => { openDetail(detailCoupleId); showToast('Beca asignada ✓', 'success'); }, 200);
+  refreshDashboard(); renderCouples();
+}
+
+// ===== MODAL PENALIZACIÓN =====
+function openPenalizacionModal() {
+  const c = couples.find(x => x.id === detailCoupleId);
+  if (!c) return;
+  const totalPaid = getTotalPaid(c);
+  document.getElementById('pen-info-banner').innerHTML =
+    '<div class="pi-name">♡ ' + esc(c.him) + ' & ' + esc(c.her) + '</div>' +
+    '<div class="pi-row"><span class="pi-lbl">Total pagado</span><span class="pi-val green">$' + fmtMoney(totalPaid) + '</span></div>' +
+    '<div class="pi-row"><span class="pi-lbl">Este monto irá al fondo de becas</span></div>';
+  document.getElementById('pen-amount').value = '';
+  document.getElementById('pen-reason').value = 'No se presentó al evento';
+  document.getElementById('pen-notes').value = '';
+  document.getElementById('pen-date').value = new Date().toISOString().split('T')[0];
+  closeModal('modal-detail');
+  document.getElementById('modal-penalizacion').classList.remove('hidden');
+}
+
+function savePenalizacion() {
+  const amount = parseFloat(document.getElementById('pen-amount').value);
+  const reason = document.getElementById('pen-reason').value;
+  const notes = document.getElementById('pen-notes').value.trim();
+  const date = document.getElementById('pen-date').value;
+  if (!amount || amount <= 0) { showToast('Ingresa el monto de penalización', 'error'); return; }
+  const idx = couples.findIndex(c => c.id === detailCoupleId);
+  if (idx === -1) return;
+  const c = couples[idx];
+
+  // Marcar pareja como penalizada
+  couples[idx].penalizacion = {
+    amount, reason, notes, date,
+    registeredBy: currentUser.name,
+    registeredAt: new Date().toISOString(),
+  };
+  saveToStorage();
+
+  // Agregar al fondo como entrada
+  const fund = getFund();
+  fund.movements.push({
+    id: 'FP' + Date.now(),
+    type: 'in',
+    subtype: 'penalizacion',
+    amount, date,
+    description: '💸 Penalización: ' + c.him + ' & ' + c.her + ' — ' + reason + (notes ? ' (' + notes + ')' : ''),
+    registeredBy: currentUser.name,
+    registeredAt: new Date().toISOString(),
+  });
+  saveFund(fund);
+  closeModal('modal-penalizacion');
+  setTimeout(() => { openDetail(detailCoupleId); showToast('Penalización registrada — fondo actualizado ✓', 'success'); }, 200);
+  refreshDashboard(); renderCouples();
 }
 
 function deleteCouple() {

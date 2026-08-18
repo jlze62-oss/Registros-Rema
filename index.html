@@ -62,6 +62,7 @@
       <a class="nav-item" onclick="showView('documents')" data-view="documents"><span class="nav-icon">⬜</span> Documentos</a>
       <a class="nav-item admin-only hidden" onclick="showView('config')" data-view="config"><span class="nav-icon">⚙</span> Configuración</a>
       <a class="nav-item admin-only hidden" onclick="showView('users')" data-view="users"><span class="nav-icon">👤</span> Usuarios</a>
+      <a class="nav-item admin-only hidden" onclick="showView('becas')" data-view="becas"><span class="nav-icon">🎓</span> Becas</a>
     </nav>
     <button class="btn-logout" onclick="doLogout()">Cerrar sesión</button>
   </nav>
@@ -180,6 +181,67 @@
         <div class="conn-status" id="conn-status"><span class="dot amber"></span> Sin configurar</div>
         <button class="btn-outline full mt16" onclick="testConnection()">Probar conexión</button>
       </div>
+    </div>
+
+    <!-- BECAS (admin) -->
+    <div id="view-becas" class="view hidden">
+
+      <!-- Saldo del fondo -->
+      <div class="card">
+        <div class="card-header"><span class="card-title">🎓 Fondo de Becas</span></div>
+        <div class="fund-balance">
+          <div class="fund-bal-lbl">Saldo disponible</div>
+          <div class="fund-bal-val" id="fund-balance">$0.00</div>
+        </div>
+        <div class="fund-stats-row">
+          <div class="fund-stat">
+            <div class="fund-stat-lbl">💸 Total entradas</div>
+            <div class="fund-stat-val green" id="fund-in">$0.00</div>
+          </div>
+          <div class="fund-stat">
+            <div class="fund-stat-lbl">🎓 Total becas</div>
+            <div class="fund-stat-val amber" id="fund-out">$0.00</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Agregar movimiento al fondo -->
+      <div class="card mt16">
+        <div class="card-header"><span class="card-title">Agregar al fondo</span></div>
+        <div class="form-group mt8">
+          <label>Tipo de entrada</label>
+          <select id="fund-type">
+            <option value="donacion">🎁 Donación voluntaria</option>
+            <option value="penalizacion">💸 Penalización (no se presentó)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Monto ($)</label>
+          <input type="number" id="fund-amount" placeholder="0.00">
+        </div>
+        <div class="form-group">
+          <label>Origen / Descripción</label>
+          <input type="text" id="fund-origin" placeholder="Ej: Familia García, Penalización Juan & Ana">
+        </div>
+        <div class="form-group">
+          <label>Fecha</label>
+          <input type="date" id="fund-date">
+        </div>
+        <button class="btn-primary full mt8" onclick="addFundMovement()">Agregar al fondo</button>
+      </div>
+
+      <!-- Historial de movimientos -->
+      <div class="card mt16">
+        <div class="card-header"><span class="card-title">Historial de movimientos</span></div>
+        <div id="fund-movements" class="couple-list mt8"></div>
+      </div>
+
+      <!-- Parejas becadas -->
+      <div class="card mt16">
+        <div class="card-header"><span class="card-title">Parejas con beca asignada</span></div>
+        <div id="fund-scholars" class="couple-list mt8"></div>
+      </div>
+
     </div>
 
     <!-- USUARIOS (admin) -->
@@ -413,6 +475,10 @@
         <button class="btn-primary" style="flex:1" onclick="editCouple()">Editar</button>
       </div>
       <button class="btn-pay" onclick="openPaymentModal()">+ Agregar pago</button>
+      <div style="display:flex;gap:8px;width:100%" id="admin-action-btns">
+        <button class="btn-beca admin-only hidden" onclick="openBecaModal()" style="flex:1">🎓 Asignar beca</button>
+        <button class="btn-penalizacion admin-only hidden" onclick="openPenalizacionModal()" style="flex:1">⚠️ Penalizar</button>
+      </div>
       <button class="btn-delete admin-only hidden" onclick="deleteCouple()">🗑 Eliminar este registro</button>
     </div>
   </div>
@@ -480,6 +546,72 @@
     <div class="modal-footer">
       <button class="btn-outline" style="flex:1" onclick="closeModal('modal-delete-confirm')">Cancelar</button>
       <button style="flex:1;background:#C0392B;color:#fff;border:none;border-radius:12px;padding:13px;font-size:15px;font-weight:500;cursor:pointer;" onclick="confirmDeleteCouple()">Sí, eliminar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: Asignar beca ===== -->
+<div id="modal-beca" class="modal-overlay hidden">
+  <div class="modal-sheet modal-sm">
+    <div class="modal-header">
+      <h3>🎓 Asignar beca</h3>
+      <button class="modal-close" onclick="closeModal('modal-beca')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="pay-info-banner" id="beca-info-banner"></div>
+      <div class="fund-avail-banner mt16" id="beca-fund-banner"></div>
+      <div class="form-group mt16">
+        <label>Monto de la beca ($)</label>
+        <input type="number" id="beca-amount" placeholder="0.00">
+        <small class="form-hint">Monto que el fondo aportará para completar su pago</small>
+      </div>
+      <div class="form-group">
+        <label>Motivo</label>
+        <input type="text" id="beca-reason" placeholder="Ej: Situación económica, apoyo de comunidad...">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" onclick="closeModal('modal-beca')">Cancelar</button>
+      <button class="btn-primary" onclick="saveBeca()">Asignar beca</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: Registrar penalización ===== -->
+<div id="modal-penalizacion" class="modal-overlay hidden">
+  <div class="modal-sheet modal-sm">
+    <div class="modal-header">
+      <h3>⚠️ Registrar penalización</h3>
+      <button class="modal-close" onclick="closeModal('modal-penalizacion')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="pay-info-banner" id="pen-info-banner"></div>
+      <div class="form-group mt16">
+        <label>Monto de penalización ($)</label>
+        <input type="number" id="pen-amount" placeholder="0.00">
+        <small class="form-hint">Este monto se sumará al fondo de becas</small>
+      </div>
+      <div class="form-group">
+        <label>Motivo</label>
+        <select id="pen-reason">
+          <option value="No se presentó al evento">No se presentó al evento</option>
+          <option value="Canceló con menos de 48 horas">Canceló con menos de 48 horas</option>
+          <option value="Canceló sin previo aviso">Canceló sin previo aviso</option>
+          <option value="Otro">Otro motivo</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Notas adicionales</label>
+        <input type="text" id="pen-notes" placeholder="Detalles opcionales...">
+      </div>
+      <div class="form-group">
+        <label>Fecha</label>
+        <input type="date" id="pen-date">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" onclick="closeModal('modal-penalizacion')">Cancelar</button>
+      <button style="flex:1;background:#B06000;color:#fff;border:none;border-radius:12px;padding:13px;font-size:15px;font-weight:500;cursor:pointer;" onclick="savePenalizacion()">Registrar penalización</button>
     </div>
   </div>
 </div>
