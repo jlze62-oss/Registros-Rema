@@ -19,6 +19,14 @@ function loadFromStorage() {
   config = JSON.parse(localStorage.getItem('rm_config') || '{}');
   users = JSON.parse(localStorage.getItem('rm_users') || '[]');
   couples = JSON.parse(localStorage.getItem('rm_couples') || '[]');
+
+  // Recalcular totales desde historial de pagos (corrige datos existentes)
+  couples.forEach((c, i) => {
+    if (c.payments && c.payments.length > 0) {
+      couples[i].amount = c.payments.reduce((s, p) => s + (p.amount || 0), 0);
+    }
+  });
+
   if (users.length === 0) {
     users = [
       { id: 1, name: 'Administrador', email: 'admin', password: 'admin123', role: 'admin' },
@@ -144,7 +152,10 @@ function toggleSidebar(forceOpen) {
 
 // ===== HELPERS =====
 function getTotalPaid(c) {
-  if (c.payments && c.payments.length > 0) return c.payments.reduce((s, p) => s + (p.amount || 0), 0);
+  if (c.payments && c.payments.length > 0) {
+    const total = c.payments.reduce((s, p) => s + (p.amount || 0), 0);
+    return Math.max(0, total); // nunca mostrar negativo
+  }
   return c.amount || 0;
 }
 function getPayStatus(c) {
