@@ -1258,62 +1258,84 @@ async function syncAllToSheets() {
   btn.textContent = '⏳ Sincronizando...';
   progressEl.classList.remove('hidden');
   resultEl.classList.add('hidden');
+  resultEl.style.background = '';
+  resultEl.style.color = '';
 
-  try {
-    // Preparar todos los pagos individuales
-    const allPayments = [];
-    couples.forEach(c => {
-      (c.payments || []).forEach(p => {
-        allPayments.push({ ...p, him: c.him, her: c.her });
+  let success = 0;
+  let errors = 0;
+  const total = couples.length;
+
+  for (let i = 0; i < couples.length; i++) {
+    const c = couples[i];
+    const pct = Math.round((i + 1) / total * 100);
+    fillEl.style.width = pct + '%';
+    statusEl.textContent = 'Enviando ' + (i + 1) + ' de ' + total + ': ' + c.him + '...';
+
+    try {
+      // Enviar datos de la pareja
+      const totalPaid = getTotalPaid(c);
+      const cost = config.cost || 0;
+      const pending = Math.max(0, cost - totalPaid);
+      let payStatus = 'Sin pago';
+      if (cost > 0 && totalPaid >= cost) payStatus = 'Pagado';
+      else if (totalPaid > 0) payStatus = 'Parcial';
+      if (c.cancelacion) payStatus = 'Cancelada';
+
+      await fetch(config.scriptUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'saveCouple',
+          couple: {
+            id: c.id, him: c.him, her: c.her,
+            telHim: c.telHim || '', telHer: c.telHer || '',
+            emailHim: c.emailHim || '', emailHer: c.emailHer || '',
+            amount: totalPaid, receivedBy: c.receivedBy || '',
+            comments: c.comments || '',
+            regDate: c.regDate || '', eventDate: c.eventDate || '',
+            docsActa: c.docs && c.docs.acta ? 'Sí' : 'No',
+            docsId:   c.docs && c.docs.id   ? 'Sí' : 'No',
+            docsPhoto:c.docs && c.docs.photo ? 'Sí' : 'No',
+            createdBy: c.createdBy || '', createdAt: c.createdAt || '',
+          }
+        })
       });
-    });
 
-    // Usuarios sin contraseñas
-    const safeUsers = users.map(u => ({ id: u.id, name: u.name, email: u.email, role: u.role }));
+      // Enviar cada pago de la pareja
+      for (const p of (c.payments || [])) {
+        await fetch(config.scriptUrl, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'savePayment',
+            payment: { ...p, him: c.him, her: c.her },
+            coupleUpdate: { id: c.id, totalPaid, pending, payStatus, numPayments: (c.payments||[]).length }
+          })
+        });
+      }
 
-    statusEl.textContent = 'Enviando ' + couples.length + ' parejas y ' + allPayments.length + ' pagos...';
-    fillEl.style.width = '30%';
+      success++;
+    } catch (e) {
+      errors++;
+      console.warn('Error sincronizando', c.him, e);
+    }
 
-    const res = await fetch(config.scriptUrl, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'syncAll',
-        couples,
-        payments: allPayments,
-        users: safeUsers,
-        config: {
-          eventName: config.eventName,
-          dateStart: config.dateStart,
-          dateEnd: config.dateEnd,
-          cost: config.cost,
-        }
-      })
-    });
-
-    fillEl.style.width = '100%';
-    statusEl.textContent = '¡Completado!';
-
-    resultEl.textContent = '✅ Sincronización exitosa — ' + couples.length + ' parejas · ' + allPayments.length + ' pagos · ' + safeUsers.length + ' usuarios enviados a Google Sheets';
-    resultEl.classList.remove('hidden');
-    showToast('Sincronización completada ✓', 'success');
-
-    // Log en actividad
-    logActivity('Sincronización masiva ejecutada desde la app por ' + currentUser.name);
-
-  } catch (e) {
-    statusEl.textContent = 'Error de conexión';
-    resultEl.textContent = '❌ No se pudo conectar. Verifica la URL del Apps Script.';
-    resultEl.style.background = '#FCEEF0';
-    resultEl.style.color = '#C0392B';
-    resultEl.classList.remove('hidden');
-    showToast('Error de sincronización', 'error');
+    // Pequeña pausa para no saturar el servidor
+    await new Promise(r => setTimeout(r, 300));
   }
+
+  fillEl.style.width = '100%';
+  statusEl.textContent = '¡Completado!';
+
+  resultEl.textContent = '✅ ' + success + ' parejas sincronizadas' + (errors > 0 ? ' · ' + errors + ' errores' : '') + ' — Revisa tu Google Sheets';
+  resultEl.classList.remove('hidden');
 
   btn.disabled = false;
   btn.textContent = '🔄 Sincronizar todo con Google Sheets';
-  setTimeout(() => progressEl.classList.add('hidden'), 3000);
+  showToast('Sincronización completada ✓', 'success');
+  setTimeout(() => progressEl.classList.add('hidden'), 4000);
 }
 
 function logActivity(msg) {
