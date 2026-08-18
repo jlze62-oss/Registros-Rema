@@ -20,12 +20,37 @@ function loadFromStorage() {
   users = JSON.parse(localStorage.getItem('rm_users') || '[]');
   couples = JSON.parse(localStorage.getItem('rm_couples') || '[]');
 
-  // Recalcular totales desde historial de pagos (corrige datos existentes)
+  // Corregir penalizaciones que quedaron en metadatos pero no en historial de pagos
+  let changed = false;
   couples.forEach((c, i) => {
-    if (c.payments && c.payments.length > 0) {
-      couples[i].amount = c.payments.reduce((s, p) => s + (p.amount || 0), 0);
+    if (c.penalizacion && c.penalizacion.amount > 0) {
+      const hasPenPayment = (c.payments || []).some(p => p.method === 'penalizacion');
+      if (!hasPenPayment) {
+        if (!couples[i].payments) couples[i].payments = [];
+        couples[i].payments.push({
+          id: 'PEN_FIX_' + c.id,
+          coupleId: c.id,
+          amount: -c.penalizacion.amount,
+          date: c.penalizacion.date || new Date().toISOString().split('T')[0],
+          receivedBy: 'Sistema REMA',
+          method: 'penalizacion',
+          note: '⚠️ Penalización: ' + (c.penalizacion.reason || '') + (c.penalizacion.notes ? ' — ' + c.penalizacion.notes : ''),
+          registeredBy: c.penalizacion.registeredBy || 'Sistema',
+          registeredAt: c.penalizacion.registeredAt || new Date().toISOString(),
+        });
+        changed = true;
+      }
+    }
+
+    // Recalcular totales desde historial de pagos
+    if (couples[i].payments && couples[i].payments.length > 0) {
+      couples[i].amount = couples[i].payments.reduce((s, p) => s + (p.amount || 0), 0);
     }
   });
+
+  if (changed) {
+    localStorage.setItem('rm_couples', JSON.stringify(couples));
+  }
 
   if (users.length === 0) {
     users = [
