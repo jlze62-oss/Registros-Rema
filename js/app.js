@@ -454,7 +454,11 @@ function renderDetailModal(c) {
       '<div class="detail-row"><span class="detail-lbl">Monto</span><span class="detail-val" style="color:#B06000">$' + fmtMoney(c.penalizacion.amount) + '</span></div>' +
       '<div class="detail-row"><span class="detail-lbl">Motivo</span><span class="detail-val">' + esc(c.penalizacion.reason || '—') + '</span></div>' +
       '<div class="detail-row"><span class="detail-lbl">Notas</span><span class="detail-val">' + esc(c.penalizacion.notes || '—') + '</span></div>' +
-      '<div class="detail-row"><span class="detail-lbl">Fecha</span><span class="detail-val">' + formatDate(c.penalizacion.date) + '</span></div>' : '') +
+      '<div class="detail-row"><span class="detail-lbl">Fecha</span><span class="detail-val">' + formatDate(c.penalizacion.date) + '</span></div>' +
+      '<div style="display:flex;gap:8px;margin-top:10px;">' +
+        '<button onclick="openEditPenalizacion()" style="flex:1;background:#FFF4E5;border:1.5px solid #B06000;color:#B06000;border-radius:10px;padding:8px;font-size:13px;cursor:pointer;">✏️ Editar</button>' +
+        '<button onclick="deletePenalizacion()" style="flex:1;background:#FCEEF0;border:1.5px solid #C0392B;color:#C0392B;border-radius:10px;padding:8px;font-size:13px;cursor:pointer;">🗑 Eliminar</button>' +
+      '</div>' : '') +
     (c.cancelacion ? '<div class="section-label mt16" style="color:#555">❌ Cancelación</div>' +
       '<div class="detail-row"><span class="detail-lbl">Tipo</span><span class="detail-val">' +
         (c.cancelacion.type === 'devolucion_total' ? '💰 Devolución total' :
@@ -802,6 +806,90 @@ function saveBeca() {
 }
 
 // ===== MODAL PENALIZACIÓN =====
+function openEditPenalizacion() {
+  const c = couples.find(x => x.id === detailCoupleId);
+  if (!c || !c.penalizacion) return;
+  const totalPaid = getTotalPaid(c);
+  const excedente = totalPaid - (config.cost || 0);
+
+  document.getElementById('pen-info-banner').innerHTML =
+    '<div class="pi-name">♡ ' + esc(c.him) + ' & ' + esc(c.her) + '</div>' +
+    '<div class="pi-row"><span class="pi-lbl">Penalización actual</span><span class="pi-val amber">$' + fmtMoney(c.penalizacion.amount) + '</span></div>' +
+    '<div class="pi-row"><span class="pi-lbl">Total pagado actual</span><span class="pi-val green">$' + fmtMoney(totalPaid) + '</span></div>';
+
+  document.getElementById('pen-amount').value = c.penalizacion.amount;
+  document.getElementById('pen-reason').value = c.penalizacion.reason || 'No se presentó al evento';
+  document.getElementById('pen-notes').value = c.penalizacion.notes || '';
+  document.getElementById('pen-date').value = c.penalizacion.date || new Date().toISOString().split('T')[0];
+  closeModal('modal-detail');
+  document.getElementById('modal-penalizacion').classList.remove('hidden');
+
+  // Cambiar el botón guardar para que actualice en vez de crear
+  document.querySelector('#modal-penalizacion .btn-primary').onclick = saveEditPenalizacion;
+  document.querySelector('#modal-penalizacion .modal-header h3').textContent = '✏️ Editar penalización';
+}
+
+function saveEditPenalizacion() {
+  const amount = parseFloat(document.getElementById('pen-amount').value);
+  const reason = document.getElementById('pen-reason').value;
+  const notes = document.getElementById('pen-notes').value.trim();
+  const date = document.getElementById('pen-date').value;
+  if (!amount || amount <= 0) { showToast('Ingresa el monto', 'error'); return; }
+
+  const idx = couples.findIndex(c => c.id === detailCoupleId);
+  if (idx === -1) return;
+
+  // Eliminar el pago negativo anterior
+  couples[idx].payments = (couples[idx].payments || []).filter(p => p.method !== 'penalizacion');
+
+  // Agregar el nuevo pago negativo
+  couples[idx].payments.push({
+    id: 'PEN_' + Date.now(),
+    coupleId: detailCoupleId,
+    amount: -amount,
+    date,
+    receivedBy: 'Sistema REMA',
+    method: 'penalizacion',
+    note: '⚠️ Penalización: ' + reason + (notes ? ' — ' + notes : ''),
+    registeredBy: currentUser.name,
+    registeredAt: new Date().toISOString(),
+  });
+
+  // Actualizar metadatos
+  couples[idx].penalizacion = { amount, reason, notes, date, registeredBy: currentUser.name, registeredAt: new Date().toISOString() };
+  couples[idx].amount = couples[idx].payments.reduce((s, p) => s + (p.amount || 0), 0);
+
+  // Actualizar fondo — ajustar diferencia
+  saveToStorage();
+  closeModal('modal-penalizacion');
+
+  // Restaurar botón original
+  document.querySelector('#modal-penalizacion .btn-primary').onclick = savePenalizacion;
+  document.querySelector('#modal-penalizacion .modal-header h3').textContent = '⚠️ Registrar penalización';
+
+  setTimeout(() => { openDetail(detailCoupleId); showToast('Penalización actualizada ✓', 'success'); }, 200);
+  refreshDashboard(); renderCouples();
+}
+
+function deletePenalizacion() {
+  const c = couples.find(x => x.id === detailCoupleId);
+  if (!c || !c.penalizacion) return;
+  if (!confirm('¿Eliminar la penalización de $' + fmtMoney(c.penalizacion.amount) + '?\n\nEl monto volverá al total pagado de la pareja.')) return;
+
+  const idx = couples.findIndex(x => x.id === detailCoupleId);
+  // Eliminar el pago negativo del historial
+  couples[idx].payments = (couples[idx].payments || []).filter(p => p.method !== 'penalizacion');
+  // Eliminar metadatos
+  delete couples[idx].penalizacion;
+  // Recalcular total
+  couples[idx].amount = couples[idx].payments.reduce((s, p) => s + (p.amount || 0), 0);
+
+  saveToStorage();
+  closeModal('modal-detail');
+  setTimeout(() => { openDetail(detailCoupleId); showToast('Penalización eliminada ✓', ''); }, 200);
+  refreshDashboard(); renderCouples();
+}
+
 function openPenalizacionModal() {
   const c = couples.find(x => x.id === detailCoupleId);
   if (!c) return;
