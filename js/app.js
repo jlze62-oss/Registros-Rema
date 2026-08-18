@@ -1615,6 +1615,46 @@ async function syncToSheets(couple) {
   } catch (e) { console.warn('Sheets sync error:', e); }
 }
 
+async function resetAndSync() {
+  if (!config.scriptUrl) { showToast('Configura primero la URL del Apps Script', 'error'); return; }
+  if (!confirm('⚠️ Esto borrará TODOS los datos locales y los reemplazará con los de Google Sheets.\n\nLos documentos (fotos/PDFs) guardados localmente se perderán.\n\n¿Continuar?')) return;
+
+  showToast('Descargando datos de Sheets...', '');
+
+  try {
+    const res = await fetch(config.scriptUrl + '?action=getCouples', { mode: 'cors' });
+    if (!res.ok) { showToast('Error de conexión', 'error'); return; }
+    const data = await res.json();
+
+    if (!data || !data.couples || data.couples.length === 0) {
+      showToast('No hay datos en Sheets para descargar', 'error');
+      return;
+    }
+
+    const validCouples = data.couples.filter(c => c.id && (c.him || c.her));
+    if (validCouples.length === 0) {
+      showToast('Los datos de Sheets no son válidos', 'error');
+      return;
+    }
+
+    // Limpiar y reemplazar con datos limpios de Sheets
+    couples = validCouples.map(c => ({
+      ...c,
+      docs: c.docs || {},
+      docLog: [],
+      payments: c.payments || [],
+      amount: (c.payments || []).reduce((s, p) => s + (p.amount || 0), 0) || c.amount || 0,
+    }));
+
+    saveToStorage();
+    refreshDashboard();
+    renderCouples();
+    showToast('✅ ' + couples.length + ' parejas descargadas de Sheets', 'success');
+  } catch (e) {
+    showToast('Error al descargar: ' + e.message, 'error');
+  }
+}
+
 async function syncFromSheets(silent = false) {
   if (!config.scriptUrl) return;
   try {
