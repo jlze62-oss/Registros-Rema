@@ -236,8 +236,12 @@ function saveCouple(c) {
   ];
 
   const data = sheet.getDataRange().getValues();
+  const hasNoCol = data[0] && data[0][0] === 'No.';
+  const idCol = hasNoCol ? 1 : 0;
+
+  // Buscar por ID en la columna correcta
   for (let i = 1; i < data.length; i++) {
-    if (data[i][0] === c.id) {
+    if (data[i][idCol] === c.id) {
       sheet.getRange(i + 1, 1, 1, row.length).setValues([row]);
       applyRowFormatting(sheet, i + 1, payStatus);
       logActivity('Actualización: ' + c.him + ' & ' + c.her);
@@ -298,14 +302,54 @@ function getCouples() {
   const sheet = getOrCreateSheet(SHEET_NAME_COUPLES, COUPLE_HEADERS);
   const data = sheet.getDataRange().getValues();
   if (data.length <= 1) return { ok: true, couples: [] };
-  const couples = data.slice(1).filter(row => row[0]).map(row => ({
-    id: row[0], him: row[1], her: row[2],
-    telHim: row[3], telHer: row[4],
-    emailHim: row[5], emailHer: row[6],
-    amount: row[7], regDate: row[11],
-    comments: row[17], createdBy: row[21], createdAt: row[22],
-    docs: { acta: row[12]==='Sí'?true:null, id: row[13]==='Sí'?true:null, photo: row[14]==='Sí'?true:null }
+
+  // Detectar si la primera columna es "No." o "ID"
+  const hasNoCol = data[0][0] === 'No.';
+  const offset = hasNoCol ? 1 : 0; // desplazamiento de columnas
+
+  // Obtener todos los pagos agrupados por pareja
+  const paySheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_PAYMENTS);
+  const paymentsByCouple = {};
+  if (paySheet && paySheet.getLastRow() > 1) {
+    const pData = paySheet.getDataRange().getValues();
+    pData.slice(1).filter(r => r[0]).forEach(r => {
+      const coupleId = r[1];
+      if (!paymentsByCouple[coupleId]) paymentsByCouple[coupleId] = [];
+      paymentsByCouple[coupleId].push({
+        id: r[0], coupleId: r[1],
+        amount: parseFloat(r[4]) || 0,
+        date: r[6] ? String(r[6]).split('T')[0].split(' ')[0] : '',
+        receivedBy: r[7] || '',
+        method: r[8] === 'Transferencia' ? 'transferencia' : r[8] === 'Beca REMA' ? 'beca' : r[8] === 'Penalización' ? 'penalizacion' : r[8] === 'Cancelación' ? 'cancelacion' : 'efectivo',
+        note: r[9] || '',
+        registeredBy: r[10] || '',
+        registeredAt: r[11] || '',
+      });
+    });
+  }
+
+  const couples = data.slice(1).filter(row => row[offset]).map(row => ({
+    id:       row[offset + 0],
+    him:      row[offset + 1],
+    her:      row[offset + 2],
+    telHim:   row[offset + 3],
+    telHer:   row[offset + 4],
+    emailHim: row[offset + 5],
+    emailHer: row[offset + 6],
+    amount:   parseFloat(row[offset + 7]) || 0,
+    eventDate: row[offset + 10] || '',
+    regDate:  row[offset + 11] ? String(row[offset + 11]).split('T')[0] : '',
+    comments: row[offset + 17] || '',
+    createdBy: row[offset + 21] || '',
+    createdAt: row[offset + 22] || '',
+    docs: {
+      acta:  row[offset + 12] === 'Sí' ? true : null,
+      id:    row[offset + 13] === 'Sí' ? true : null,
+      photo: row[offset + 14] === 'Sí' ? true : null,
+    },
+    payments: paymentsByCouple[row[offset + 0]] || [],
   }));
+
   return { ok: true, couples };
 }
 

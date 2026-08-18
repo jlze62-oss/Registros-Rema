@@ -279,3 +279,6 @@ a { cursor: pointer; text-decoration: none; }
   display: flex; align-items: center; justify-content: center;
   font-size: 13px; font-weight: 700; flex-shrink: 0;
 }
+
+/* ===== REG PRINCIPAL BADGE ===== */
+.badge-reg-principal { background: #F0F4FF; color: #4A3FAA; }

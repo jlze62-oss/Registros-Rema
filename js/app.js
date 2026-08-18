@@ -7,6 +7,15 @@ let currentFilter = 'all';
 let editingCoupleId = null;
 let docData = { acta: null, id: null, photo: null };
 let detailCoupleId = null;
+let syncTimer = null;
+let lastSyncTime = null;
+
+// ===== ROLES =====
+function isAdmin() { return currentUser && currentUser.role === 'admin'; }
+function isRegPrincipal() { return currentUser && (currentUser.role === 'admin' || currentUser.role === 'registrador_principal' || currentUser.email === 'mcastillo'); }
+function canEdit() { return isAdmin(); }
+function canViewDocs() { return isAdmin() || isRegPrincipal(); }
+function canRegister() { return currentUser && ['admin','registrador_principal','registrador'].includes(currentUser.role); }
 
 // ===== INICIALIZACIÓN =====
 window.addEventListener('load', () => {
@@ -119,6 +128,7 @@ document.addEventListener('keydown', e => {
 });
 
 function doLogout() {
+  stopAutoSync();
   currentUser = null;
   sessionStorage.removeItem('rm_session');
   document.getElementById('screen-app').classList.add('hidden');
@@ -131,12 +141,22 @@ function doLogout() {
 function showApp() {
   document.getElementById('screen-login').classList.add('hidden');
   document.getElementById('screen-app').classList.remove('hidden');
-  const isAdmin = currentUser.role === 'admin';
-  document.querySelectorAll('.admin-only').forEach(el => el.classList.toggle('hidden', !isAdmin));
+
+  const admin = isAdmin();
+  const regPrincipal = isRegPrincipal();
+
+  // Mostrar/ocultar elementos según rol
+  document.querySelectorAll('.admin-only').forEach(el => el.classList.toggle('hidden', !admin));
+
+  // Nombre y rol en sidebar
   document.getElementById('nav-avatar').textContent = (currentUser.name || 'U').charAt(0).toUpperCase();
   document.getElementById('nav-username').textContent = currentUser.name;
-  document.getElementById('nav-role').textContent = isAdmin ? 'Administrador' : 'Registrador';
-  if (isAdmin) {
+  document.getElementById('nav-role').textContent =
+    admin ? 'Administrador' :
+    regPrincipal ? 'Reg. Principal' : 'Registrador';
+
+  // Cargar config en formulario si es admin
+  if (admin) {
     document.getElementById('cfg-event-name').value = config.eventName || '';
     document.getElementById('cfg-date-start').value = config.dateStart || '';
     document.getElementById('cfg-date-end').value = config.dateEnd || '';
@@ -144,8 +164,28 @@ function showApp() {
     document.getElementById('cfg-sheet-id').value = config.sheetId || '';
     document.getElementById('cfg-script-url').value = config.scriptUrl || '';
   }
+
   showView('dashboard');
-  if (config.scriptUrl) syncFromSheets();
+
+  // Sincronizar al iniciar sesión
+  if (config.scriptUrl) {
+    syncFromSheets();
+    startAutoSync();
+  }
+}
+
+// ===== AUTO-SYNC CADA 3 MINUTOS =====
+function startAutoSync() {
+  if (syncTimer) clearInterval(syncTimer);
+  syncTimer = setInterval(() => {
+    if (config.scriptUrl && currentUser) {
+      syncFromSheets(true); // silent = true
+    }
+  }, 3 * 60 * 1000); // 3 minutos
+}
+
+function stopAutoSync() {
+  if (syncTimer) { clearInterval(syncTimer); syncTimer = null; }
 }
 
 // ===== NAVEGACIÓN =====
@@ -399,14 +439,14 @@ function renderDetailModal(c) {
   ];
   const docRows = docItems.map(item => {
     const has = d[item.key];
+    const canSee = canViewDocs();
     return '<div class="detail-row">' +
       '<span class="detail-lbl">' + item.icon + ' ' + item.label + '</span>' +
       '<div style="display:flex;align-items:center;gap:6px;">' +
         '<span style="font-size:12px;color:' + (has ? '#1E7B3C' : '#B06000') + '">' + (has ? '✓ Cargado' : '⏳ Pendiente') + '</span>' +
-        (has
-          ? '<button onclick="viewDoc(\'' + c.id + '\',\'' + item.key + '\')" class="btn-doc-action btn-view">Ver</button>'
-          : '<button onclick="openDocUpload(\'' + c.id + '\',\'' + item.key + '\')" class="btn-doc-action btn-upload">+ Subir</button>') +
-        (has ? '<button onclick="openDocUpload(\'' + c.id + '\',\'' + item.key + '\')" class="btn-doc-action btn-replace">Reemplazar</button>' : '') +
+        (has && canSee ? '<button onclick="viewDoc(\'' + c.id + '\',\'' + item.key + '\')" class="btn-doc-action btn-view">Ver</button>' : '') +
+        (canSee && has ? '<button onclick="openDocUpload(\'' + c.id + '\',\'' + item.key + '\')" class="btn-doc-action btn-replace">Reemplazar</button>' : '') +
+        (!has ? '<button onclick="openDocUpload(\'' + c.id + '\',\'' + item.key + '\')" class="btn-doc-action btn-upload">+ Subir</button>' : '') +
       '</div>' +
     '</div>';
   }).join('');
@@ -414,6 +454,19 @@ function renderDetailModal(c) {
   const logHTML = (c.docLog || []).slice(-8).reverse().map(l =>
     '<div class="doc-log-item"><span class="log-time">' + esc(l.ts) + '</span> ' + esc(l.user) + ' subió ' + esc(l.doc) + '</div>'
   ).join('') || '<div style="color:#aaa;font-size:12px;">Sin actividad</div>';
+
+  // Botones del footer según rol — se actualizan dinámicamente
+  const editBtn = document.getElementById('btn-edit-couple');
+  const adminBtns = document.getElementById('admin-action-btns');
+  const cancelBtn = document.querySelector('.btn-cancelacion');
+  const deleteBtn = document.querySelector('.btn-delete');
+  const becaBtn = document.querySelector('.btn-beca');
+  const penBtn = document.querySelector('.btn-penalizacion');
+
+  if (editBtn) editBtn.style.display = canEdit() ? '' : 'none';
+  if (adminBtns) adminBtns.style.display = canEdit() ? 'flex' : 'none';
+  if (cancelBtn) cancelBtn.style.display = canEdit() ? '' : 'none';
+  if (deleteBtn) deleteBtn.style.display = canEdit() ? '' : 'none';
 
   document.getElementById('detail-body').innerHTML =
     '<div class="section-label">Participantes</div>' +
@@ -1293,17 +1346,19 @@ function saveCouple() {
 
 // ===== USERS =====
 function renderUsers() {
-  document.getElementById('users-list').innerHTML = users.map(u =>
-    '<div class="user-item">' +
+  document.getElementById('users-list').innerHTML = users.map(u => {
+    const roleLabel = u.role === 'admin' ? 'Admin' : u.role === 'registrador_principal' ? 'Reg. Principal' : 'Registrador';
+    const roleBadge = u.role === 'admin' ? 'badge-admin' : u.role === 'registrador_principal' ? 'badge-reg-principal' : 'badge-reg';
+    return '<div class="user-item">' +
       '<div class="user-avatar">' + esc(u.name.charAt(0).toUpperCase()) + '</div>' +
       '<div class="user-item-info"><div class="user-item-name">' + esc(u.name) + '</div><div class="user-item-email">' + esc(u.email) + '</div></div>' +
       '<div style="display:flex;align-items:center;gap:8px;">' +
-        '<span class="badge ' + (u.role === 'admin' ? 'badge-admin' : 'badge-reg') + '">' + (u.role === 'admin' ? 'Admin' : 'Registrador') + '</span>' +
+        '<span class="badge ' + roleBadge + '">' + roleLabel + '</span>' +
         '<button onclick="openEditUserModal(' + u.id + ')" style="background:#F0E8E5;border:none;border-radius:8px;padding:6px 10px;font-size:12px;color:#7C2D3E;cursor:pointer;">✏️</button>' +
         '<button onclick="deleteUser(' + u.id + ')" style="background:#FCEEF0;border:none;border-radius:8px;padding:6px 10px;font-size:12px;color:#C0392B;cursor:pointer;">🗑</button>' +
       '</div>' +
-    '</div>'
-  ).join('');
+    '</div>';
+  }).join('');
 }
 
 function openNewUserModal() {
@@ -1560,19 +1615,95 @@ async function syncToSheets(couple) {
   } catch (e) { console.warn('Sheets sync error:', e); }
 }
 
-async function syncFromSheets() {
+async function syncFromSheets(silent = false) {
   if (!config.scriptUrl) return;
   try {
+    if (!silent) showSyncIndicator('syncing');
     const res = await fetch(config.scriptUrl + '?action=getCouples', { mode: 'cors' });
-    if (!res.ok) return;
+    if (!res.ok) { if (!silent) showSyncIndicator('error'); return; }
     const data = await res.json();
-    if (data && data.couples) {
-      data.couples.forEach(sc => {
-        if (!couples.find(c => c.id === sc.id)) couples.push({ ...sc, docs: {}, docLog: [], payments: [] });
+    if (data && data.couples && data.couples.length > 0) {
+      // Validar que los datos tengan nombres válidos
+      const validCouples = data.couples.filter(c => c.id && (c.him || c.her));
+      if (validCouples.length === 0) {
+        if (!silent) showSyncIndicator('error');
+        return;
+      }
+
+      // Merge: actualizar datos de Sheets, preservar docs y pagos locales
+      const localMap = {};
+      couples.forEach(c => { localMap[c.id] = c; });
+
+      validCouples.forEach(sc => {
+        if (localMap[sc.id]) {
+          const local = localMap[sc.id];
+          // Solo actualizar si los datos de Sheets son válidos
+          if (sc.him && sc.her) {
+            localMap[sc.id] = {
+              ...local,         // base local
+              him: sc.him,      // actualizar datos básicos desde Sheets
+              her: sc.her,
+              telHim: sc.telHim || local.telHim,
+              telHer: sc.telHer || local.telHer,
+              emailHim: sc.emailHim || local.emailHim,
+              emailHer: sc.emailHer || local.emailHer,
+              regDate: sc.regDate || local.regDate,
+              eventDate: sc.eventDate || local.eventDate,
+              comments: sc.comments || local.comments,
+              // Preservar siempre lo local
+              docs: local.docs || {},
+              docLog: local.docLog || [],
+              payments: local.payments && local.payments.length > 0 ? local.payments : (sc.payments || []),
+              beca: local.beca || sc.beca,
+              penalizacion: local.penalizacion || sc.penalizacion,
+              cancelacion: local.cancelacion || sc.cancelacion,
+            };
+          }
+        } else if (sc.him && sc.her) {
+          // Nueva pareja de Sheets — solo agregar si tiene nombres válidos
+          localMap[sc.id] = {
+            ...sc,
+            docs: {},
+            docLog: [],
+            payments: sc.payments || [],
+          };
+        }
       });
-      saveToStorage(); refreshDashboard();
+
+      couples = Object.values(localMap);
+
+      // Recalcular totales
+      couples.forEach((c, i) => {
+        if (c.payments && c.payments.length > 0) {
+          couples[i].amount = c.payments.reduce((s, p) => s + (p.amount || 0), 0);
+        }
+      });
+
+      saveToStorage();
+      lastSyncTime = new Date();
+      refreshDashboard();
+      renderCouples();
     }
-  } catch (e) { console.warn('Sheets read error:', e); }
+    if (!silent) showSyncIndicator('ok');
+  } catch (e) {
+    console.warn('Sync error:', e);
+    if (!silent) showSyncIndicator('error');
+  }
+}
+
+function showSyncIndicator(status) {
+  const el = document.getElementById('sync-indicator');
+  if (!el) return;
+  if (status === 'syncing') {
+    el.innerHTML = '<span style="color:rgba(255,255,255,0.7);font-size:11px">⟳ Sincronizando...</span>';
+  } else if (status === 'ok') {
+    const time = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+    el.innerHTML = '<span style="color:rgba(255,255,255,0.7);font-size:11px">✓ Sync ' + time + '</span>';
+    setTimeout(() => { if (el) el.innerHTML = ''; }, 4000);
+  } else {
+    el.innerHTML = '<span style="color:rgba(255,200,180,0.8);font-size:11px">⚠ Sin conexión</span>';
+    setTimeout(() => { if (el) el.innerHTML = ''; }, 4000);
+  }
 }
 
 async function testConnection() {
