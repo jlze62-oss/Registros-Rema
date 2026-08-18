@@ -1242,6 +1242,85 @@ function saveUser() {
 }
 
 // ===== GOOGLE SHEETS SYNC =====
+async function syncAllToSheets() {
+  if (!config.scriptUrl) {
+    showToast('Configura primero la URL del Apps Script', 'error');
+    return;
+  }
+
+  const btn = document.getElementById('btn-sync-all');
+  const progressEl = document.getElementById('sync-progress');
+  const fillEl = document.getElementById('sync-progress-fill');
+  const statusEl = document.getElementById('sync-status-text');
+  const resultEl = document.getElementById('sync-result');
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Sincronizando...';
+  progressEl.classList.remove('hidden');
+  resultEl.classList.add('hidden');
+
+  try {
+    // Preparar todos los pagos individuales
+    const allPayments = [];
+    couples.forEach(c => {
+      (c.payments || []).forEach(p => {
+        allPayments.push({ ...p, him: c.him, her: c.her });
+      });
+    });
+
+    // Usuarios sin contraseñas
+    const safeUsers = users.map(u => ({ id: u.id, name: u.name, email: u.email, role: u.role }));
+
+    statusEl.textContent = 'Enviando ' + couples.length + ' parejas y ' + allPayments.length + ' pagos...';
+    fillEl.style.width = '30%';
+
+    const res = await fetch(config.scriptUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'syncAll',
+        couples,
+        payments: allPayments,
+        users: safeUsers,
+        config: {
+          eventName: config.eventName,
+          dateStart: config.dateStart,
+          dateEnd: config.dateEnd,
+          cost: config.cost,
+        }
+      })
+    });
+
+    fillEl.style.width = '100%';
+    statusEl.textContent = '¡Completado!';
+
+    resultEl.textContent = '✅ Sincronización exitosa — ' + couples.length + ' parejas · ' + allPayments.length + ' pagos · ' + safeUsers.length + ' usuarios enviados a Google Sheets';
+    resultEl.classList.remove('hidden');
+    showToast('Sincronización completada ✓', 'success');
+
+    // Log en actividad
+    logActivity('Sincronización masiva ejecutada desde la app por ' + currentUser.name);
+
+  } catch (e) {
+    statusEl.textContent = 'Error de conexión';
+    resultEl.textContent = '❌ No se pudo conectar. Verifica la URL del Apps Script.';
+    resultEl.style.background = '#FCEEF0';
+    resultEl.style.color = '#C0392B';
+    resultEl.classList.remove('hidden');
+    showToast('Error de sincronización', 'error');
+  }
+
+  btn.disabled = false;
+  btn.textContent = '🔄 Sincronizar todo con Google Sheets';
+  setTimeout(() => progressEl.classList.add('hidden'), 3000);
+}
+
+function logActivity(msg) {
+  // Log local — la actividad se registra en Sheets durante el syncAll
+  console.log('[REMA]', msg);
+}
+
 async function syncPaymentToSheets(payment, couple) {
   if (!config.scriptUrl) return;
   try {
