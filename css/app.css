@@ -271,3 +271,11 @@ a { cursor: pointer; text-decoration: none; }
 .btn-cancelacion:hover { background: #EAEAEA; }
 .badge-cancelada { background: #F0F0F0; color: #555; }
 .badge-credito { background: #EAF1FB; color: #1B5FA8; }
+
+/* ===== NÚMERO CONSECUTIVO ===== */
+.couple-num {
+  width: 36px; height: 36px; border-radius: 10px;
+  background: #7C2D3E; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700; flex-shrink: 0;
+}

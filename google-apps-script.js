@@ -23,11 +23,13 @@ function doPost(e) {
   try {
     const payload = JSON.parse(e.postData.contents);
     const action  = payload.action || '';
-    if (action === 'saveCouple')   return jsonResponse(saveCouple(payload.couple));
-    if (action === 'savePayment')  return jsonResponse(savePayment(payload.payment, payload.coupleUpdate));
-    if (action === 'deleteCouple') return jsonResponse(deleteCouple(payload.id));
-    if (action === 'saveConfig')   return jsonResponse(saveConfigData(payload.config));
-    if (action === 'syncAll')      return jsonResponse(syncAll(payload));
+    if (action === 'saveCouple')    return jsonResponse(saveCouple(payload.couple));
+    if (action === 'savePayment')   return jsonResponse(savePayment(payload.payment, payload.coupleUpdate));
+    if (action === 'deleteCouple')  return jsonResponse(deleteCouple(payload.id));
+    if (action === 'saveConfig')    return jsonResponse(saveConfigData(payload.config));
+    if (action === 'syncAll')       return jsonResponse(syncAll(payload));
+    if (action === 'syncPayments')  return jsonResponse(syncPayments(payload.payments));
+    if (action === 'syncUsers')     return jsonResponse(syncUsers(payload.users));
     return jsonResponse({ ok: false, msg: 'Acción no reconocida' });
   } catch(err) {
     return jsonResponse({ ok: false, error: err.toString() });
@@ -58,7 +60,7 @@ function getOrCreateSheet(name, headers) {
 
 // ===== HEADERS =====
 const COUPLE_HEADERS = [
-  'ID', 'Él', 'Ella', 'Tel. Él', 'Tel. Ella', 'Email Él', 'Email Ella',
+  'No.', 'ID', 'Él', 'Ella', 'Tel. Él', 'Tel. Ella', 'Email Él', 'Email Ella',
   'Pagado ($)', 'Pendiente ($)', 'Recibió pago',
   'Fecha Evento', 'Fecha Registro',
   'Acta Matrimonio', 'Identificación', 'Foto Juntos',
@@ -90,7 +92,7 @@ function syncAll(payload) {
 
   if (couples.length > 0) {
     const cost = parseFloat(cfg.cost) || 0;
-    const rows = couples.map(c => {
+    const rows = couples.map((c, i) => {
       const paid = parseFloat(c.amount) || 0;
       const pending = Math.max(0, cost - paid);
       let payStatus = 'Sin pago';
@@ -99,6 +101,7 @@ function syncAll(payload) {
       if (c.cancelacion) payStatus = 'Cancelada';
       const docsOk = c.docs && c.docs.acta && c.docs.id && c.docs.photo;
       return [
+        i + 1,  // No. consecutivo
         c.id || '', c.him || '', c.her || '',
         c.telHim || '', c.telHer || '',
         c.emailHim || '', c.emailHer || '',
@@ -172,6 +175,44 @@ function syncAll(payload) {
   return { ok: true, results };
 }
 
+// ===== SINCRONIZAR PAGOS (limpia y reescribe) =====
+function syncPayments(payments) {
+  if (!payments || payments.length === 0) return { ok: true, count: 0 };
+  const sheet = getOrCreateSheet(SHEET_NAME_PAYMENTS, PAYMENT_HEADERS);
+  if (sheet.getLastRow() > 1) {
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, PAYMENT_HEADERS.length).clearContent();
+  }
+  const rows = payments.map(p => [
+    p.id || '', p.coupleId || '', p.him || '', p.her || '',
+    p.amount || 0,
+    p.amount < 0 ? (p.method === 'penalizacion' ? 'Penalización' : p.method === 'cancelacion' ? 'Cancelación' : 'Descuento') : (p.method === 'beca' ? 'Beca' : 'Abono'),
+    p.date || '', p.receivedBy || '',
+    p.method === 'transferencia' ? 'Transferencia' : p.method === 'beca' ? 'Beca REMA' : p.method === 'penalizacion' ? 'Penalización' : p.method === 'cancelacion' ? 'Cancelación' : 'Efectivo',
+    p.note || '', p.registeredBy || '', p.registeredAt || ''
+  ]);
+  sheet.getRange(2, 1, rows.length, PAYMENT_HEADERS.length).setValues(rows);
+  rows.forEach((row, i) => {
+    const amount = row[4];
+    sheet.getRange(i + 2, 1, 1, PAYMENT_HEADERS.length)
+      .setBackground(amount < 0 ? '#FCEEF0' : '#EAF7EE');
+  });
+  logActivity('Sincronización de pagos: ' + rows.length + ' registros');
+  return { ok: true, count: rows.length };
+}
+
+// ===== SINCRONIZAR USUARIOS =====
+function syncUsers(users) {
+  if (!users || users.length === 0) return { ok: true, count: 0 };
+  const sheet = getOrCreateSheet(SHEET_NAME_USERS, USER_HEADERS);
+  if (sheet.getLastRow() > 1) {
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, USER_HEADERS.length).clearContent();
+  }
+  const rows = users.map(u => [u.id || '', u.name || '', u.email || '', u.role || '', 'Sí']);
+  sheet.getRange(2, 1, rows.length, USER_HEADERS.length).setValues(rows);
+  logActivity('Sincronización de usuarios: ' + rows.length + ' registros');
+  return { ok: true, count: rows.length };
+}
+
 // ===== GUARDAR / ACTUALIZAR PAREJA (individual) =====
 function saveCouple(c) {
   const sheet = getOrCreateSheet(SHEET_NAME_COUPLES, COUPLE_HEADERS);
@@ -184,7 +225,7 @@ function saveCouple(c) {
   else if (paid > 0) payStatus = 'Parcial';
 
   const row = [
-    c.id, c.him, c.her, c.telHim || '', c.telHer || '',
+    c.num || '', c.id, c.him, c.her, c.telHim || '', c.telHer || '',
     c.emailHim || '', c.emailHer || '',
     paid, pending, c.receivedBy || '',
     c.eventDate || '', c.regDate || '',

@@ -36,6 +36,21 @@ function checkSession() {
 function saveToStorage() { localStorage.setItem('rm_couples', JSON.stringify(couples)); }
 function saveUsers() { localStorage.setItem('rm_users', JSON.stringify(users)); }
 
+// ===== NÚMERO CONSECUTIVO =====
+// Ordenados por fecha de registro (más antiguo = #1)
+function getSortedByDate() {
+  return [...couples].sort((a, b) => {
+    const da = new Date(a.createdAt || a.regDate || '2099-01-01');
+    const db = new Date(b.createdAt || b.regDate || '2099-01-01');
+    return da - db;
+  });
+}
+function getConsecutive(coupleId) {
+  const sorted = getSortedByDate();
+  const idx = sorted.findIndex(c => c.id === coupleId);
+  return idx >= 0 ? idx + 1 : '—';
+}
+
 // ===== CONFIGURACIÓN =====
 function saveConfig() {
   config = {
@@ -189,6 +204,7 @@ function coupleItemHTML(c) {
   const status = getPayStatus(c);
   const paid = getTotalPaid(c);
   const docsStatus = getDocsStatus(c);
+  const num = getConsecutive(c.id);
   const badgeMap = { paid: ['badge-paid','Pagado'], partial: ['badge-partial','Parcial'], nopay: ['badge-nopay','Sin pago'] };
   const [bClass, bText] = badgeMap[status];
   const docBadge = docsStatus.complete
@@ -198,7 +214,7 @@ function coupleItemHTML(c) {
   const penBadge = c.penalizacion ? '<span class="badge badge-penalizada" style="margin-left:4px">⚠️</span>' : '';
   const cancelBadge = c.cancelacion ? '<span class="badge badge-cancelada" style="margin-left:4px">❌ ' + (c.cancelacion.type === 'credito' ? 'Crédito' : 'Cancelada') + '</span>' : '';
   return '<div class="couple-item" onclick="openDetail(\'' + c.id + '\')">' +
-    '<div class="couple-avatar">♡</div>' +
+    '<div class="couple-num">#' + num + '</div>' +
     '<div class="couple-info">' +
       '<div class="couple-names">' + esc(c.him) + ' & ' + esc(c.her) + '</div>' +
       '<div class="couple-meta">' + formatDate(c.regDate) + docBadge + becaBadge + penBadge + cancelBadge + '</div>' +
@@ -300,7 +316,8 @@ function openDetail(id) {
 }
 
 function renderDetailModal(c) {
-  document.getElementById('detail-title').textContent = c.him + ' & ' + c.her;
+  const num = getConsecutive(c.id);
+  document.getElementById('detail-title').textContent = '#' + num + ' · ' + c.him + ' & ' + c.her;
   const cost = config.cost || 0;
   // Asegurar que payments siempre sea array válido
   const payments = (c.payments || []).filter(p => p && p.amount > 0);
@@ -364,6 +381,7 @@ function renderDetailModal(c) {
 
   document.getElementById('detail-body').innerHTML =
     '<div class="section-label">Participantes</div>' +
+    '<div class="detail-row"><span class="detail-lbl">No. consecutivo</span><span class="detail-val" style="font-size:16px;font-weight:700;color:#7C2D3E">#' + num + '</span></div>' +
     '<div class="detail-row"><span class="detail-lbl">Él</span><span class="detail-val">' + esc(c.him) + '</span></div>' +
     '<div class="detail-row"><span class="detail-lbl">Ella</span><span class="detail-val">' + esc(c.her) + '</span></div>' +
     '<div class="detail-row"><span class="detail-lbl">Tel. él</span><span class="detail-val">' + esc(c.telHim || '—') + '</span></div>' +
@@ -1272,7 +1290,6 @@ async function syncAllToSheets() {
     statusEl.textContent = 'Enviando ' + (i + 1) + ' de ' + total + ': ' + c.him + '...';
 
     try {
-      // Enviar datos de la pareja
       const totalPaid = getTotalPaid(c);
       const cost = config.cost || 0;
       const pending = Math.max(0, cost - totalPaid);
@@ -1288,6 +1305,7 @@ async function syncAllToSheets() {
         body: JSON.stringify({
           action: 'saveCouple',
           couple: {
+            num: i + 1,
             id: c.id, him: c.him, her: c.her,
             telHim: c.telHim || '', telHer: c.telHer || '',
             emailHim: c.emailHim || '', emailHer: c.emailHer || '',
@@ -1327,6 +1345,35 @@ async function syncAllToSheets() {
   }
 
   fillEl.style.width = '100%';
+  statusEl.textContent = 'Sincronizando pagos...';
+
+  // Sincronizar todos los pagos de una vez
+  try {
+    const allPayments = [];
+    couples.forEach(c => {
+      (c.payments || []).forEach(p => allPayments.push({ ...p, him: c.him, her: c.her }));
+    });
+    if (allPayments.length > 0) {
+      await fetch(config.scriptUrl, {
+        method: 'POST', mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'syncPayments', payments: allPayments })
+      });
+    }
+  } catch(e) { console.warn('Payments sync error', e); }
+
+  statusEl.textContent = 'Sincronizando usuarios...';
+
+  // Sincronizar usuarios
+  try {
+    const safeUsers = users.map(u => ({ id: u.id, name: u.name, email: u.email, role: u.role }));
+    await fetch(config.scriptUrl, {
+      method: 'POST', mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'syncUsers', users: safeUsers })
+    });
+  } catch(e) { console.warn('Users sync error', e); }
+
   statusEl.textContent = '¡Completado!';
 
   resultEl.textContent = '✅ ' + success + ' parejas sincronizadas' + (errors > 0 ? ' · ' + errors + ' errores' : '') + ' — Revisa tu Google Sheets';
