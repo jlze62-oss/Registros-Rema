@@ -196,11 +196,12 @@ function coupleItemHTML(c) {
     : '<span class="badge badge-docs-pend" style="margin-left:4px">Docs ' + docsStatus.done + '/3</span>';
   const becaBadge = c.beca ? '<span class="badge badge-becada" style="margin-left:4px">🎓</span>' : '';
   const penBadge = c.penalizacion ? '<span class="badge badge-penalizada" style="margin-left:4px">⚠️</span>' : '';
+  const cancelBadge = c.cancelacion ? '<span class="badge badge-cancelada" style="margin-left:4px">❌ ' + (c.cancelacion.type === 'credito' ? 'Crédito' : 'Cancelada') + '</span>' : '';
   return '<div class="couple-item" onclick="openDetail(\'' + c.id + '\')">' +
     '<div class="couple-avatar">♡</div>' +
     '<div class="couple-info">' +
       '<div class="couple-names">' + esc(c.him) + ' & ' + esc(c.her) + '</div>' +
-      '<div class="couple-meta">' + formatDate(c.regDate) + docBadge + becaBadge + penBadge + '</div>' +
+      '<div class="couple-meta">' + formatDate(c.regDate) + docBadge + becaBadge + penBadge + cancelBadge + '</div>' +
     '</div>' +
     '<div class="couple-right">' +
       '<div class="couple-amount">$' + fmtMoney(paid) + '</div>' +
@@ -315,21 +316,24 @@ function renderDetailModal(c) {
     ? '<div style="color:#aaa;font-size:13px;padding:8px 0;">Sin abonos aún — usa el botón verde abajo.</div>'
     : '<div class="payment-history">' + payments.map((p, i) => {
         const acum = payments.slice(0, i + 1).reduce((s, x) => s + x.amount, 0);
-        const icon = p.method === 'transferencia' ? '🏦' : '💵';
+        const isNeg = p.amount < 0;
+        const isPen = p.method === 'penalizacion';
+        const isBeca = p.method === 'beca';
+        const icon = isPen ? '⚠️' : isBeca ? '🎓' : p.method === 'transferencia' ? '🏦' : '💵';
         const isAdmin = currentUser && currentUser.role === 'admin';
         return '<div class="payment-item">' +
-          '<div class="payment-dot ' + (i === 0 ? 'first' : '') + '"></div>' +
+          '<div class="payment-dot ' + (i === 0 ? 'first' : '') + '" style="background:' + (isPen ? '#B06000' : isBeca ? '#1E7B3C' : '#1E7B3C') + '"></div>' +
           '<div class="payment-info">' +
             '<div style="display:flex;justify-content:space-between;align-items:center;">' +
-              '<div class="payment-amount">' + icon + ' $' + fmtMoney(p.amount) + '</div>' +
+              '<div class="payment-amount" style="color:' + (isNeg ? '#C0392B' : '#1A1A1A') + '">' + icon + ' ' + (isNeg ? '−' : '') + '$' + fmtMoney(Math.abs(p.amount)) + '</div>' +
               '<div style="display:flex;gap:6px;">' +
-                (isAdmin ? '<button onclick="openEditPaymentModal(\'' + c.id + '\',\'' + p.id + '\')" style="background:#EAF1FB;border:none;border-radius:6px;padding:3px 8px;font-size:11px;color:#1B5FA8;cursor:pointer;">✏️ Editar</button>' : '') +
+                (isAdmin && !isPen && !isBeca ? '<button onclick="openEditPaymentModal(\'' + c.id + '\',\'' + p.id + '\')" style="background:#EAF1FB;border:none;border-radius:6px;padding:3px 8px;font-size:11px;color:#1B5FA8;cursor:pointer;">✏️ Editar</button>' : '') +
                 (isAdmin ? '<button onclick="deletePayment(\'' + c.id + '\',\'' + p.id + '\')" style="background:none;border:none;color:#ddd;font-size:16px;cursor:pointer;padding:0 0 0 4px;">✕</button>' : '') +
               '</div>' +
             '</div>' +
-            '<div class="payment-meta">' + formatDate(p.date) + ' · ' + esc(p.receivedBy || '—') + ' · ' + (p.method === 'transferencia' ? 'Transferencia' : 'Efectivo') + '</div>' +
+            '<div class="payment-meta">' + formatDate(p.date) + ' · ' + esc(p.receivedBy || '—') + ' · ' + (isPen ? 'Penalización' : isBeca ? 'Beca REMA' : p.method === 'transferencia' ? 'Transferencia' : 'Efectivo') + '</div>' +
             (p.note ? '<div class="payment-note">"' + esc(p.note) + '"</div>' : '') +
-            '<div class="payment-acum">Acumulado hasta aquí: $' + fmtMoney(acum) + '</div>' +
+            '<div class="payment-acum" style="color:' + (acum < 0 ? '#C0392B' : '#1E7B3C') + '">Acumulado hasta aquí: $' + fmtMoney(acum) + '</div>' +
           '</div>' +
         '</div>';
       }).join('') + '</div>';
@@ -396,7 +400,16 @@ function renderDetailModal(c) {
       '<div class="detail-row"><span class="detail-lbl">Monto</span><span class="detail-val" style="color:#B06000">$' + fmtMoney(c.penalizacion.amount) + '</span></div>' +
       '<div class="detail-row"><span class="detail-lbl">Motivo</span><span class="detail-val">' + esc(c.penalizacion.reason || '—') + '</span></div>' +
       '<div class="detail-row"><span class="detail-lbl">Notas</span><span class="detail-val">' + esc(c.penalizacion.notes || '—') + '</span></div>' +
-      '<div class="detail-row"><span class="detail-lbl">Fecha</span><span class="detail-val">' + formatDate(c.penalizacion.date) + '</span></div>' : '');
+      '<div class="detail-row"><span class="detail-lbl">Fecha</span><span class="detail-val">' + formatDate(c.penalizacion.date) + '</span></div>' : '') +
+    (c.cancelacion ? '<div class="section-label mt16" style="color:#555">❌ Cancelación</div>' +
+      '<div class="detail-row"><span class="detail-lbl">Tipo</span><span class="detail-val">' +
+        (c.cancelacion.type === 'devolucion_total' ? '💰 Devolución total' :
+         c.cancelacion.type === 'devolucion_parcial' ? '💸 Devolución parcial' : '🔄 Crédito siguiente evento') +
+      '</span></div>' +
+      (c.cancelacion.amount > 0 ? '<div class="detail-row"><span class="detail-lbl">Monto devuelto</span><span class="detail-val">$' + fmtMoney(c.cancelacion.amount) + '</span></div>' : '') +
+      '<div class="detail-row"><span class="detail-lbl">Fecha</span><span class="detail-val">' + formatDate(c.cancelacion.date) + '</span></div>' +
+      '<div class="detail-row"><span class="detail-lbl">Gestionó</span><span class="detail-val">' + esc(c.cancelacion.cancelBy || '—') + '</span></div>' +
+      (c.cancelacion.notes ? '<div class="detail-row"><span class="detail-lbl">Notas</span><span class="detail-val">' + esc(c.cancelacion.notes) + '</span></div>' : '') : '');
 }
 
 // ===== VER DOCUMENTO =====
@@ -739,11 +752,19 @@ function openPenalizacionModal() {
   const c = couples.find(x => x.id === detailCoupleId);
   if (!c) return;
   const totalPaid = getTotalPaid(c);
+  const cost = config.cost || 0;
+  const excedente = totalPaid - cost;
+
   document.getElementById('pen-info-banner').innerHTML =
     '<div class="pi-name">♡ ' + esc(c.him) + ' & ' + esc(c.her) + '</div>' +
     '<div class="pi-row"><span class="pi-lbl">Total pagado</span><span class="pi-val green">$' + fmtMoney(totalPaid) + '</span></div>' +
-    '<div class="pi-row"><span class="pi-lbl">Este monto irá al fondo de becas</span></div>';
-  document.getElementById('pen-amount').value = '';
+    (excedente > 0
+      ? '<div class="pi-row"><span class="pi-lbl">Excedente sobre costo</span><span class="pi-val amber">$' + fmtMoney(excedente) + '</span></div>'
+      : '') +
+    '<div class="pi-row"><span class="pi-lbl">El monto penalizado irá al fondo de becas</span></div>';
+
+  // Sugerir el excedente como monto de penalización si aplica
+  document.getElementById('pen-amount').value = excedente > 0 ? excedente.toFixed(2) : '';
   document.getElementById('pen-reason').value = 'No se presentó al evento';
   document.getElementById('pen-notes').value = '';
   document.getElementById('pen-date').value = new Date().toISOString().split('T')[0];
@@ -757,9 +778,33 @@ function savePenalizacion() {
   const notes = document.getElementById('pen-notes').value.trim();
   const date = document.getElementById('pen-date').value;
   if (!amount || amount <= 0) { showToast('Ingresa el monto de penalización', 'error'); return; }
+  if (!date) { showToast('Selecciona la fecha', 'error'); return; }
+
   const idx = couples.findIndex(c => c.id === detailCoupleId);
   if (idx === -1) return;
   const c = couples[idx];
+  const totalPaid = getTotalPaid(c);
+
+  if (amount > totalPaid) {
+    showToast('La penalización no puede ser mayor al total pagado ($' + fmtMoney(totalPaid) + ')', 'error');
+    return;
+  }
+
+  // Registrar penalización como abono negativo en el historial
+  const penPayment = {
+    id: 'PEN' + Date.now(),
+    coupleId: detailCoupleId,
+    amount: -amount, // negativo para descontar
+    date,
+    receivedBy: 'Sistema REMA',
+    method: 'penalizacion',
+    note: '⚠️ Penalización: ' + reason + (notes ? ' — ' + notes : ''),
+    registeredBy: currentUser.name,
+    registeredAt: new Date().toISOString(),
+  };
+  if (!couples[idx].payments) couples[idx].payments = [];
+  couples[idx].payments.push(penPayment);
+  couples[idx].amount = couples[idx].payments.reduce((s, p) => s + (p.amount || 0), 0);
 
   // Marcar pareja como penalizada
   couples[idx].penalizacion = {
@@ -781,9 +826,134 @@ function savePenalizacion() {
     registeredAt: new Date().toISOString(),
   });
   saveFund(fund);
+
   closeModal('modal-penalizacion');
-  setTimeout(() => { openDetail(detailCoupleId); showToast('Penalización registrada — fondo actualizado ✓', 'success'); }, 200);
-  refreshDashboard(); renderCouples();
+  setTimeout(() => {
+    openDetail(detailCoupleId);
+    const nuevoTotal = getTotalPaid(couples[idx]);
+    const costo = config.cost || 0;
+    const excedente = nuevoTotal - costo;
+    let msg = 'Penalización de $' + fmtMoney(amount) + ' registrada ✓';
+    if (excedente > 0) msg += ' · Excedente: $' + fmtMoney(excedente);
+    showToast(msg, 'success');
+  }, 200);
+  refreshDashboard();
+  renderCouples();
+}
+
+// ===== CANCELACIÓN =====
+function openCancelacionModal() {
+  const c = couples.find(x => x.id === detailCoupleId);
+  if (!c) return;
+  const totalPaid = getTotalPaid(c);
+
+  document.getElementById('cancel-info-banner').innerHTML =
+    '<div class="pi-name">♡ ' + esc(c.him) + ' & ' + esc(c.her) + '</div>' +
+    '<div class="pi-row"><span class="pi-lbl">Total pagado</span><span class="pi-val green">$' + fmtMoney(totalPaid) + '</span></div>' +
+    '<div class="pi-row"><span class="pi-lbl">Cancelación con anticipación</span></div>';
+
+  document.getElementById('cancel-type').value = 'devolucion_total';
+  document.getElementById('cancel-amount').value = totalPaid.toFixed(2);
+  document.getElementById('cancel-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('cancel-by').value = '';
+  document.getElementById('cancel-notes').value = '';
+  updateCancelForm();
+  closeModal('modal-detail');
+  document.getElementById('modal-cancelacion').classList.remove('hidden');
+}
+
+function updateCancelForm() {
+  const type = document.getElementById('cancel-type').value;
+  const amountSection = document.getElementById('cancel-amount-section');
+  const creditoSection = document.getElementById('cancel-credito-section');
+  const c = couples.find(x => x.id === detailCoupleId);
+  const totalPaid = c ? getTotalPaid(c) : 0;
+
+  if (type === 'devolucion_total') {
+    amountSection.classList.remove('hidden');
+    creditoSection.classList.add('hidden');
+    document.getElementById('cancel-amount').value = totalPaid.toFixed(2);
+    document.getElementById('cancel-amount').readOnly = true;
+  } else if (type === 'devolucion_parcial') {
+    amountSection.classList.remove('hidden');
+    creditoSection.classList.add('hidden');
+    document.getElementById('cancel-amount').value = '';
+    document.getElementById('cancel-amount').readOnly = false;
+  } else {
+    amountSection.classList.add('hidden');
+    creditoSection.classList.remove('hidden');
+  }
+}
+
+function saveCancelacion() {
+  const type = document.getElementById('cancel-type').value;
+  const date = document.getElementById('cancel-date').value;
+  const cancelBy = document.getElementById('cancel-by').value.trim();
+  const notes = document.getElementById('cancel-notes').value.trim();
+
+  if (!date) { showToast('Selecciona la fecha', 'error'); return; }
+  if (!cancelBy) { showToast('Indica quién gestionó la cancelación', 'error'); return; }
+
+  const idx = couples.findIndex(c => c.id === detailCoupleId);
+  if (idx === -1) return;
+  const c = couples[idx];
+  const totalPaid = getTotalPaid(c);
+
+  let amount = 0;
+  let historyNote = '';
+  let toastMsg = '';
+
+  if (type === 'devolucion_total') {
+    amount = totalPaid;
+    historyNote = '❌ Cancelación — Devolución total de $' + fmtMoney(amount) + '. Gestionó: ' + cancelBy + (notes ? '. ' + notes : '');
+    toastMsg = 'Cancelación con devolución total de $' + fmtMoney(amount) + ' ✓';
+  } else if (type === 'devolucion_parcial') {
+    amount = parseFloat(document.getElementById('cancel-amount').value);
+    if (!amount || amount <= 0) { showToast('Ingresa el monto a devolver', 'error'); return; }
+    if (amount > totalPaid) { showToast('No puede ser mayor al total pagado', 'error'); return; }
+    historyNote = '❌ Cancelación — Devolución parcial de $' + fmtMoney(amount) + ' de $' + fmtMoney(totalPaid) + ' pagados. Gestionó: ' + cancelBy + (notes ? '. ' + notes : '');
+    toastMsg = 'Cancelación con devolución parcial de $' + fmtMoney(amount) + ' ✓';
+  } else {
+    // Crédito — no se mueve dinero
+    historyNote = '🔄 Cancelación — Crédito para siguiente evento por $' + fmtMoney(totalPaid) + '. Gestionó: ' + cancelBy + (notes ? '. ' + notes : '');
+    toastMsg = 'Cancelación con crédito para siguiente evento ✓';
+  }
+
+  // Agregar al historial de abonos como movimiento negativo (devolución)
+  if (amount > 0) {
+    const cancelPayment = {
+      id: 'CAN' + Date.now(),
+      coupleId: detailCoupleId,
+      amount: -amount,
+      date,
+      receivedBy: cancelBy,
+      method: 'cancelacion',
+      note: historyNote,
+      registeredBy: currentUser.name,
+      registeredAt: new Date().toISOString(),
+    };
+    if (!couples[idx].payments) couples[idx].payments = [];
+    couples[idx].payments.push(cancelPayment);
+    couples[idx].amount = couples[idx].payments.reduce((s, p) => s + (p.amount || 0), 0);
+  }
+
+  // Marcar como cancelada y actualizar comentarios
+  couples[idx].cancelacion = {
+    type, amount, date, cancelBy, notes,
+    registeredBy: currentUser.name,
+    registeredAt: new Date().toISOString(),
+  };
+
+  // Agregar a comentarios
+  const prevComments = couples[idx].comments || '';
+  const cancelComment = '[' + formatDate(date) + '] ' + historyNote;
+  couples[idx].comments = prevComments ? prevComments + '\n' + cancelComment : cancelComment;
+
+  saveToStorage();
+  closeModal('modal-cancelacion');
+  setTimeout(() => { openDetail(detailCoupleId); showToast(toastMsg, 'success'); }, 200);
+  refreshDashboard();
+  renderCouples();
 }
 
 function deleteCouple() {

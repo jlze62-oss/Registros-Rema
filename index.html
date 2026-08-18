@@ -479,6 +479,7 @@
         <button class="btn-beca admin-only hidden" onclick="openBecaModal()" style="flex:1">🎓 Asignar beca</button>
         <button class="btn-penalizacion admin-only hidden" onclick="openPenalizacionModal()" style="flex:1">⚠️ Penalizar</button>
       </div>
+      <button class="btn-cancelacion admin-only hidden" onclick="openCancelacionModal()">❌ Registrar cancelación</button>
       <button class="btn-delete admin-only hidden" onclick="deleteCouple()">🗑 Eliminar este registro</button>
     </div>
   </div>
@@ -523,6 +524,58 @@
     <div class="modal-footer">
       <button class="btn-outline" onclick="closeModal('modal-edit-payment')">Cancelar</button>
       <button class="btn-primary" onclick="saveEditPayment()">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: Registrar cancelación ===== -->
+<div id="modal-cancelacion" class="modal-overlay hidden">
+  <div class="modal-sheet modal-sm">
+    <div class="modal-header">
+      <h3>❌ Registrar cancelación</h3>
+      <button class="modal-close" onclick="closeModal('modal-cancelacion')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="pay-info-banner" id="cancel-info-banner"></div>
+
+      <div class="form-group mt16">
+        <label>Tipo de cancelación</label>
+        <select id="cancel-type" onchange="updateCancelForm()">
+          <option value="devolucion_total">💰 Devolución total</option>
+          <option value="devolucion_parcial">💸 Devolución parcial</option>
+          <option value="credito">🔄 Crédito para siguiente evento</option>
+        </select>
+      </div>
+
+      <div id="cancel-amount-section" class="hidden">
+        <div class="form-group">
+          <label>Monto a devolver ($)</label>
+          <input type="number" id="cancel-amount" placeholder="0.00">
+        </div>
+      </div>
+
+      <div id="cancel-credito-section" class="hidden">
+        <div class="cancel-info-box" style="background:#EAF1FB;border-radius:10px;padding:12px;font-size:13px;color:#1B5FA8;margin-bottom:14px;">
+          🔄 Se anotará en los comentarios que esta pareja tiene crédito para el próximo evento. No se realizará ningún movimiento de dinero.
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Fecha de cancelación</label>
+        <input type="date" id="cancel-date">
+      </div>
+      <div class="form-group">
+        <label>Quién gestionó la cancelación</label>
+        <input type="text" id="cancel-by" placeholder="Nombre del responsable">
+      </div>
+      <div class="form-group">
+        <label>Notas adicionales</label>
+        <input type="text" id="cancel-notes" placeholder="Detalles, motivo, acuerdos...">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" onclick="closeModal('modal-cancelacion')">Cancelar</button>
+      <button class="btn-primary" onclick="saveCancelacion()">Registrar cancelación</button>
     </div>
   </div>
 </div>

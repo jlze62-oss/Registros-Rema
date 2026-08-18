@@ -260,3 +260,14 @@ a { cursor: pointer; text-decoration: none; }
 
 /* ===== RESPONSIVE ===== */
 @media (min-width: 600px) { .stats-grid { grid-template-columns: repeat(4, 1fr); } }
+
+/* ===== CANCELACIÓN ===== */
+.btn-cancelacion {
+  width: 100%;
+  background: #F5F5F5; color: #555;
+  border: 1.5px solid #DDD; border-radius: 12px;
+  padding: 11px; font-size: 13px; font-weight: 500; cursor: pointer;
+}
+.btn-cancelacion:hover { background: #EAEAEA; }
+.badge-cancelada { background: #F0F0F0; color: #555; }
+.badge-credito { background: #EAF1FB; color: #1B5FA8; }
