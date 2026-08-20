@@ -167,11 +167,12 @@ function showApp() {
 
   showView('dashboard');
 
-  // Sincronizar al iniciar sesión
-  if (config.scriptUrl) {
-    syncFromSheets();
-    startAutoSync();
-  }
+  // Sincronizar al iniciar sesión solo si el script está configurado correctamente
+  // Auto-sync desactivado temporalmente hasta confirmar que Apps Script devuelve datos correctos
+  // if (config.scriptUrl) {
+  //   syncFromSheets();
+  //   startAutoSync();
+  // }
 }
 
 // ===== AUTO-SYNC CADA 3 MINUTOS =====
