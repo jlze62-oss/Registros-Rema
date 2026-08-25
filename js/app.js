@@ -10,7 +10,7 @@ let detailCoupleId = null;
 let syncTimer = null;
 let lastSyncTime = null;
 let pendingSync = new Set(); // IDs de parejas pendientes de sincronizar
-
+ 
 // ===== ROLES =====
 function isAdmin() { return currentUser && currentUser.role === 'admin'; }
 function isRegPrincipal() { return currentUser && (currentUser.role === 'admin' || currentUser.role === 'registrador_principal' || currentUser.email === 'mcastillo'); }
@@ -18,20 +18,28 @@ function canSync() { return isAdmin() || isRegPrincipal(); } // puede hacer sinc
 function canEdit() { return isAdmin(); }
 function canViewDocs() { return isAdmin() || isRegPrincipal(); }
 function canRegister() { return currentUser && ['admin','registrador_principal','registrador'].includes(currentUser.role); }
-
+ 
+// Candado adicional dentro de las funciones de Beca/Penalización/Cancelación
+// (no solo ocultar el botón): así, aunque alguien las dispare a mano desde
+// la consola del navegador, no se ejecutan si el usuario no es Admin.
+function requireAdmin() {
+  if (!isAdmin()) { showToast('Solo el Admin puede hacer esto', 'error'); return false; }
+  return true;
+}
+ 
 // ===== INICIALIZACIÓN =====
 window.addEventListener('load', () => {
   loadFromStorage();
   checkSession();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 });
-
+ 
 function loadFromStorage() {
   config = JSON.parse(localStorage.getItem('rm_config') || '{}');
   users = JSON.parse(localStorage.getItem('rm_users') || '[]');
   couples = JSON.parse(localStorage.getItem('rm_couples') || '[]');
   pendingSync = new Set(JSON.parse(localStorage.getItem('rm_pending') || '[]'));
-
+ 
   // Corregir penalizaciones que quedaron en metadatos pero no en historial de pagos
   let changed = false;
   couples.forEach((c, i) => {
@@ -59,7 +67,7 @@ function loadFromStorage() {
     }
   });
   if (changed) localStorage.setItem('rm_couples', JSON.stringify(couples));
-
+ 
   if (users.length === 0) {
     users = [
       { id: 1, name: 'Administrador', email: 'admin', password: 'admin123', role: 'admin' },
@@ -68,19 +76,19 @@ function loadFromStorage() {
     saveUsers();
   }
 }
-
+ 
 function savePendingSync() {
   localStorage.setItem('rm_pending', JSON.stringify([...pendingSync]));
 }
-
+ 
 function checkSession() {
   const session = sessionStorage.getItem('rm_session');
   if (session) { currentUser = JSON.parse(session); showApp(); }
 }
-
+ 
 function saveToStorage() { localStorage.setItem('rm_couples', JSON.stringify(couples)); }
 function saveUsers() { localStorage.setItem('rm_users', JSON.stringify(users)); }
-
+ 
 // ===== NÚMERO CONSECUTIVO =====
 // Ordenados por fecha de registro (más antiguo = #1)
 function getSortedByDate() {
@@ -95,7 +103,7 @@ function getConsecutive(coupleId) {
   const idx = sorted.findIndex(c => c.id === coupleId);
   return idx >= 0 ? idx + 1 : '—';
 }
-
+ 
 // ===== CONFIGURACIÓN =====
 function saveConfig() {
   config = {
@@ -112,7 +120,7 @@ function saveConfig() {
   showToast('Configuración guardada', 'success');
   refreshDashboard();
 }
-
+ 
 // ===== LOGIN =====
 function doLogin() {
   const email = document.getElementById('login-user').value.trim().toLowerCase();
@@ -125,11 +133,11 @@ function doLogin() {
   sessionStorage.setItem('rm_session', JSON.stringify(user));
   showApp();
 }
-
+ 
 document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !document.getElementById('screen-login').classList.contains('hidden')) doLogin();
 });
-
+ 
 function doLogout() {
   stopAutoSync();
   currentUser = null;
@@ -140,24 +148,24 @@ function doLogout() {
   document.getElementById('login-pass').value = '';
   toggleSidebar(false);
 }
-
+ 
 function showApp() {
   document.getElementById('screen-login').classList.add('hidden');
   document.getElementById('screen-app').classList.remove('hidden');
-
+ 
   const admin = isAdmin();
   const regPrincipal = isRegPrincipal();
-
+ 
   // Mostrar/ocultar elementos según rol
   document.querySelectorAll('.admin-only').forEach(el => el.classList.toggle('hidden', !admin));
-
+ 
   // Nombre y rol en sidebar
   document.getElementById('nav-avatar').textContent = (currentUser.name || 'U').charAt(0).toUpperCase();
   document.getElementById('nav-username').textContent = currentUser.name;
   document.getElementById('nav-role').textContent =
     admin ? 'Administrador' :
     regPrincipal ? 'Reg. Principal' : 'Registrador';
-
+ 
   // Cargar config en formulario si es admin
   if (admin) {
     document.getElementById('cfg-event-name').value = config.eventName || '';
@@ -167,9 +175,9 @@ function showApp() {
     document.getElementById('cfg-sheet-id').value = config.sheetId || '';
     document.getElementById('cfg-script-url').value = config.scriptUrl || '';
   }
-
+ 
   showView('dashboard');
-
+ 
   // Sincronizar al iniciar sesión solo si el script está configurado correctamente
   // Auto-sync desactivado temporalmente hasta confirmar que Apps Script devuelve datos correctos
   // if (config.scriptUrl) {
@@ -177,7 +185,7 @@ function showApp() {
   //   startAutoSync();
   // }
 }
-
+ 
 // ===== AUTO-SYNC CADA 3 MINUTOS =====
 function startAutoSync() {
   if (syncTimer) clearInterval(syncTimer);
@@ -187,11 +195,11 @@ function startAutoSync() {
     }
   }, 3 * 60 * 1000); // 3 minutos
 }
-
+ 
 function stopAutoSync() {
   if (syncTimer) { clearInterval(syncTimer); syncTimer = null; }
 }
-
+ 
 // ===== NAVEGACIÓN =====
 function showView(view) {
   document.querySelectorAll('.view').forEach(v => { v.classList.remove('active'); v.style.display = 'none'; });
@@ -212,13 +220,13 @@ function showView(view) {
   if (view === 'users') renderUsers();
   if (view === 'becas') renderBecas();
 }
-
+ 
 function toggleSidebar(forceOpen) {
   const open = forceOpen !== undefined ? forceOpen : !document.getElementById('sidebar').classList.contains('open');
   document.getElementById('sidebar').classList.toggle('open', open);
   document.getElementById('sidebar-overlay').classList.toggle('hidden', !open);
 }
-
+ 
 // ===== HELPERS =====
 function getTotalPaid(c) {
   if (c.payments && c.payments.length > 0) {
@@ -253,7 +261,27 @@ function formatDate(dateStr) {
   const m = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
   return parseInt(p[2]) + ' ' + m[parseInt(p[1])-1] + ' ' + p[0];
 }
-
+ 
+// ===== MERGE DE ABONOS (local + Sheets, sin perder ninguno) =====
+// Combina por ID: nunca descarta un lado solo porque el otro no esté
+// vacío. Si el mismo ID de abono existe en ambos lados (p. ej. se editó
+// un abono), se queda con la versión más reciente según editedAt/
+// registeredAt. Esto evita que un dispositivo "borre" visualmente los
+// abonos que otro registrador ya subió a Sheets.
+function mergePayments(localPayments, sheetPayments) {
+  const map = {};
+  (sheetPayments || []).forEach(p => { if (p && p.id) map[p.id] = p; });
+  (localPayments || []).forEach(p => {
+    if (!p || !p.id) return;
+    const existing = map[p.id];
+    if (!existing) { map[p.id] = p; return; }
+    const localTime = new Date(p.editedAt || p.registeredAt || 0).getTime();
+    const sheetTime = new Date(existing.editedAt || existing.registeredAt || 0).getTime();
+    map[p.id] = localTime >= sheetTime ? p : existing;
+  });
+  return Object.values(map);
+}
+ 
 // ===== DASHBOARD =====
 function refreshDashboard() {
   const cost = config.cost || 0;
@@ -278,7 +306,7 @@ function refreshDashboard() {
     ? '<p style="color:#888;font-size:13px;padding:8px 0;">No hay registros aún.</p>'
     : recent.map(coupleItemHTML).join('');
 }
-
+ 
 // ===== COUPLES =====
 function coupleItemHTML(c) {
   const status = getPayStatus(c);
@@ -305,7 +333,7 @@ function coupleItemHTML(c) {
     '</div>' +
   '</div>';
 }
-
+ 
 function renderCouples() {
   const search = (document.getElementById('search-couples').value || '').toLowerCase();
   const list = couples.filter(c => {
@@ -321,7 +349,7 @@ function renderCouples() {
   if (list.length === 0) { el.innerHTML = ''; empty.classList.remove('hidden'); }
   else { empty.classList.add('hidden'); el.innerHTML = list.map(coupleItemHTML).join(''); }
 }
-
+ 
 function filterCouples() { renderCouples(); }
 function setFilter(f, btn) {
   currentFilter = f;
@@ -329,7 +357,7 @@ function setFilter(f, btn) {
   btn.classList.add('active');
   renderCouples();
 }
-
+ 
 // ===== PAYMENTS VIEW =====
 function renderPayments() {
   const el = document.getElementById('payments-list');
@@ -355,7 +383,7 @@ function renderPayments() {
     '</div>';
   }).join('');
 }
-
+ 
 // ===== DOCUMENTS VIEW =====
 function renderDocuments() {
   const el = document.getElementById('docs-list');
@@ -385,7 +413,7 @@ function renderDocuments() {
     '</div>';
   }).join('');
 }
-
+ 
 // ===== DETAIL MODAL =====
 function openDetail(id) {
   const c = couples.find(x => x.id === id);
@@ -394,7 +422,7 @@ function openDetail(id) {
   renderDetailModal(c);
   document.getElementById('modal-detail').classList.remove('hidden');
 }
-
+ 
 function renderDetailModal(c) {
   const num = getConsecutive(c.id);
   document.getElementById('detail-title').textContent = '#' + num + ' · ' + c.him + ' & ' + c.her;
@@ -407,7 +435,7 @@ function renderDetailModal(c) {
   const d = c.docs || {};
   const efectivo = payments.filter(p => p.method !== 'transferencia').reduce((s, p) => s + p.amount, 0);
   const transf = payments.filter(p => p.method === 'transferencia').reduce((s, p) => s + p.amount, 0);
-
+ 
   // Historial de pagos
   let paymentsHTML = payments.length === 0
     ? '<div style="color:#aaa;font-size:13px;padding:8px 0;">Sin abonos aún — usa el botón verde abajo.</div>'
@@ -434,7 +462,7 @@ function renderDetailModal(c) {
           '</div>' +
         '</div>';
       }).join('') + '</div>';
-
+ 
   // Documentos con botones Ver / Subir
   const docItems = [
     { key: 'acta', label: 'Acta de matrimonio', icon: '📋' },
@@ -454,11 +482,11 @@ function renderDetailModal(c) {
       '</div>' +
     '</div>';
   }).join('');
-
+ 
   const logHTML = (c.docLog || []).slice(-8).reverse().map(l =>
     '<div class="doc-log-item"><span class="log-time">' + esc(l.ts) + '</span> ' + esc(l.user) + ' subió ' + esc(l.doc) + '</div>'
   ).join('') || '<div style="color:#aaa;font-size:12px;">Sin actividad</div>';
-
+ 
   // Botones del footer según rol — se actualizan dinámicamente
   const editBtn = document.getElementById('btn-edit-couple');
   const adminBtns = document.getElementById('admin-action-btns');
@@ -466,12 +494,15 @@ function renderDetailModal(c) {
   const deleteBtn = document.querySelector('.btn-delete');
   const becaBtn = document.querySelector('.btn-beca');
   const penBtn = document.querySelector('.btn-penalizacion');
-
+ 
   if (editBtn) editBtn.style.display = canEdit() ? '' : 'none';
   if (adminBtns) adminBtns.style.display = canEdit() ? 'flex' : 'none';
   if (cancelBtn) cancelBtn.style.display = canEdit() ? '' : 'none';
   if (deleteBtn) deleteBtn.style.display = canEdit() ? '' : 'none';
-
+  // Beca y Penalización: solo Admin (antes se buscaban pero nunca se ocultaban)
+  if (becaBtn) becaBtn.style.display = canEdit() ? '' : 'none';
+  if (penBtn) penBtn.style.display = canEdit() ? '' : 'none';
+ 
   document.getElementById('detail-body').innerHTML =
     '<div class="section-label">Participantes</div>' +
     '<div class="detail-row"><span class="detail-lbl">No. consecutivo</span><span class="detail-val" style="font-size:16px;font-weight:700;color:#7C2D3E">#' + num + '</span></div>' +
@@ -481,7 +512,7 @@ function renderDetailModal(c) {
     '<div class="detail-row"><span class="detail-lbl">Tel. ella</span><span class="detail-val">' + esc(c.telHer || '—') + '</span></div>' +
     (c.emailHim ? '<div class="detail-row"><span class="detail-lbl">Email él</span><span class="detail-val" style="font-size:12px">' + esc(c.emailHim) + '</span></div>' : '') +
     (c.emailHer ? '<div class="detail-row"><span class="detail-lbl">Email ella</span><span class="detail-val" style="font-size:12px">' + esc(c.emailHer) + '</span></div>' : '') +
-
+ 
     '<div class="section-label mt16">Resumen de pago</div>' +
     '<div class="detail-row"><span class="detail-lbl">Costo total</span><span class="detail-val">$' + fmtMoney(cost) + '</span></div>' +
     '<div class="detail-row"><span class="detail-lbl">Total pagado</span><span class="detail-val" style="color:#1E7B3C;font-weight:600">$' + fmtMoney(totalPaid) + '</span></div>' +
@@ -489,14 +520,14 @@ function renderDetailModal(c) {
     (efectivo > 0 ? '<div class="detail-row"><span class="detail-lbl">💵 Efectivo</span><span class="detail-val">$' + fmtMoney(efectivo) + '</span></div>' : '') +
     (transf > 0 ? '<div class="detail-row"><span class="detail-lbl">🏦 Transferencia</span><span class="detail-val">$' + fmtMoney(transf) + '</span></div>' : '') +
     '<div class="detail-row"><span class="detail-lbl">No. abonos</span><span class="detail-val">' + payments.length + '</span></div>' +
-
+ 
     '<div class="section-label mt16">Historial de abonos</div>' +
     paymentsHTML +
-
+ 
     '<div class="section-label mt16">Documentos (' + docsStatus.done + '/3)</div>' +
     docRows +
     '<div style="margin-top:10px">' + logHTML + '</div>' +
-
+ 
     (c.comments ? '<div class="section-label mt16">Comentarios</div><div style="font-size:13px;color:#555;padding:6px 0;">' + esc(c.comments) + '</div>' : '') +
     '<div class="section-label mt16">Datos del registro</div>' +
     '<div class="detail-row"><span class="detail-lbl">Fecha registro</span><span class="detail-val">' + formatDate(c.regDate) + '</span></div>' +
@@ -526,7 +557,7 @@ function renderDetailModal(c) {
       '<div class="detail-row"><span class="detail-lbl">Gestionó</span><span class="detail-val">' + esc(c.cancelacion.cancelBy || '—') + '</span></div>' +
       (c.cancelacion.notes ? '<div class="detail-row"><span class="detail-lbl">Notas</span><span class="detail-val">' + esc(c.cancelacion.notes) + '</span></div>' : '') : '');
 }
-
+ 
 // ===== VER DOCUMENTO =====
 function viewDoc(coupleId, docKey) {
   const c = couples.find(x => x.id === coupleId);
@@ -540,11 +571,11 @@ function viewDoc(coupleId, docKey) {
     win.document.write('<iframe src="' + doc.data + '" style="width:100%;height:100vh;border:none;"></iframe>');
   }
 }
-
+ 
 // ===== SUBIR DOCUMENTO INDIVIDUAL =====
 let uploadingDocKey = null;
 let uploadingCoupleId = null;
-
+ 
 function openDocUpload(coupleId, docKey) {
   uploadingDocKey = docKey;
   uploadingCoupleId = coupleId;
@@ -559,7 +590,7 @@ function openDocUpload(coupleId, docKey) {
   closeModal('modal-detail');
   document.getElementById('modal-doc-upload').classList.remove('hidden');
 }
-
+ 
 function handleSingleDocSelect(input) {
   const file = input.files[0];
   if (!file) return;
@@ -578,7 +609,7 @@ function handleSingleDocSelect(input) {
   };
   reader.readAsDataURL(file);
 }
-
+ 
 function saveSingleDoc() {
   const preview = document.getElementById('single-doc-preview');
   if (!preview.dataset.data) { showToast('Selecciona un archivo primero', 'error'); return; }
@@ -595,7 +626,7 @@ function saveSingleDoc() {
   setTimeout(() => openDetail(uploadingCoupleId), 200);
   renderDocuments();
 }
-
+ 
 // ===== MODAL DE PAGO =====
 function openEditPaymentModal(coupleId, paymentId) {
   const c = couples.find(x => x.id === coupleId);
@@ -603,7 +634,7 @@ function openEditPaymentModal(coupleId, paymentId) {
   const p = (c.payments || []).find(x => x.id === paymentId);
   if (!p) return;
   detailCoupleId = coupleId;
-
+ 
   document.getElementById('edit-pay-couple-id').value = coupleId;
   document.getElementById('edit-pay-id').value = paymentId;
   document.getElementById('edit-pay-amount').value = p.amount;
@@ -614,7 +645,7 @@ function openEditPaymentModal(coupleId, paymentId) {
   closeModal('modal-detail');
   document.getElementById('modal-edit-payment').classList.remove('hidden');
 }
-
+ 
 function saveEditPayment() {
   const coupleId = document.getElementById('edit-pay-couple-id').value;
   const paymentId = document.getElementById('edit-pay-id').value;
@@ -623,16 +654,16 @@ function saveEditPayment() {
   const method = document.getElementById('edit-pay-method').value;
   const receivedBy = document.getElementById('edit-pay-received-by').value.trim();
   const note = document.getElementById('edit-pay-note').value.trim();
-
+ 
   if (!amount || amount <= 0) { showToast('Ingresa un monto válido', 'error'); return; }
   if (!date) { showToast('Selecciona la fecha', 'error'); return; }
   if (!receivedBy) { showToast('Indica quién recibió el pago', 'error'); return; }
-
+ 
   const cIdx = couples.findIndex(c => c.id === coupleId);
   if (cIdx === -1) return;
   const pIdx = couples[cIdx].payments.findIndex(p => p.id === paymentId);
   if (pIdx === -1) return;
-
+ 
   couples[cIdx].payments[pIdx] = {
     ...couples[cIdx].payments[pIdx],
     amount, date, method, receivedBy, note,
@@ -647,7 +678,7 @@ function saveEditPayment() {
   renderCouples();
   renderPayments();
 }
-
+ 
 function openPaymentModal() {
   const c = couples.find(x => x.id === detailCoupleId);
   if (!c) return;
@@ -668,7 +699,7 @@ function openPaymentModal() {
   closeModal('modal-detail');
   document.getElementById('modal-payment').classList.remove('hidden');
 }
-
+ 
 function updatePaymentPreview() {
   const amount = parseFloat(document.getElementById('pay-amount').value) || 0;
   const c = couples.find(x => x.id === detailCoupleId);
@@ -680,7 +711,7 @@ function updatePaymentPreview() {
   preview.innerHTML = 'Nuevo total: <strong>$' + fmtMoney(newTotal) + '</strong> · Pendiente: <strong>$' + fmtMoney(newPending) + '</strong>' + (newPending <= 0 ? ' ✓ ¡Liquidado!' : '');
   preview.classList.add('visible');
 }
-
+ 
 function savePayment() {
   const amount = parseFloat(document.getElementById('pay-amount').value);
   if (!amount || amount <= 0) { showToast('Ingresa un monto válido', 'error'); return; }
@@ -710,7 +741,7 @@ function savePayment() {
   renderCouples();
   renderPayments();
 }
-
+ 
 // ===== BECAS / FONDO =====
 function getFund() {
   return JSON.parse(localStorage.getItem('rm_fund') || '{"movements":[]}');
@@ -722,18 +753,18 @@ function getFundBalance() {
   const fund = getFund();
   return fund.movements.reduce((s, m) => m.type === 'out' ? s - m.amount : s + m.amount, 0);
 }
-
+ 
 function renderBecas() {
   const fund = getFund();
   const totalIn = fund.movements.filter(m => m.type === 'in').reduce((s, m) => s + m.amount, 0);
   const totalOut = fund.movements.filter(m => m.type === 'out').reduce((s, m) => s + m.amount, 0);
   const balance = totalIn - totalOut;
-
+ 
   document.getElementById('fund-balance').textContent = '$' + fmtMoney(balance);
   document.getElementById('fund-in').textContent = '$' + fmtMoney(totalIn);
   document.getElementById('fund-out').textContent = '$' + fmtMoney(totalOut);
   document.getElementById('fund-date').value = new Date().toISOString().split('T')[0];
-
+ 
   // Movimientos
   const movEl = document.getElementById('fund-movements');
   if (fund.movements.length === 0) {
@@ -754,7 +785,7 @@ function renderBecas() {
       '</div>';
     }).join('');
   }
-
+ 
   // Parejas becadas
   const scholarsEl = document.getElementById('fund-scholars');
   const becadas = couples.filter(c => c.beca);
@@ -773,7 +804,7 @@ function renderBecas() {
     ).join('');
   }
 }
-
+ 
 function addFundMovement() {
   const type = document.getElementById('fund-type').value;
   const amount = parseFloat(document.getElementById('fund-amount').value);
@@ -798,9 +829,10 @@ function addFundMovement() {
   renderBecas();
   showToast('Movimiento registrado ✓', 'success');
 }
-
+ 
 // ===== MODAL BECA =====
 function openBecaModal() {
+  if (!requireAdmin()) return;
   const c = couples.find(x => x.id === detailCoupleId);
   if (!c) return;
   const cost = config.cost || 0;
@@ -817,8 +849,9 @@ function openBecaModal() {
   closeModal('modal-detail');
   document.getElementById('modal-beca').classList.remove('hidden');
 }
-
+ 
 function saveBeca() {
+  if (!requireAdmin()) return;
   const amount = parseFloat(document.getElementById('beca-amount').value);
   const reason = document.getElementById('beca-reason').value.trim();
   if (!amount || amount <= 0) { showToast('Ingresa un monto válido', 'error'); return; }
@@ -827,7 +860,7 @@ function saveBeca() {
   const idx = couples.findIndex(c => c.id === detailCoupleId);
   if (idx === -1) return;
   const c = couples[idx];
-
+ 
   // Registrar beca en la pareja
   const becaPayment = {
     id: 'B' + Date.now(),
@@ -844,7 +877,8 @@ function saveBeca() {
   couples[idx].amount = couples[idx].payments.reduce((s, p) => s + (p.amount || 0), 0);
   couples[idx].beca = { amount, reason, date: becaPayment.date, assignedBy: currentUser.name };
   saveToStorage();
-
+  autoSyncCouple(couples[idx]); // Enviar a Sheets automáticamente
+ 
   // Registrar salida del fondo
   const fund = getFund();
   fund.movements.push({
@@ -861,44 +895,46 @@ function saveBeca() {
   setTimeout(() => { openDetail(detailCoupleId); showToast('Beca asignada ✓', 'success'); }, 200);
   refreshDashboard(); renderCouples();
 }
-
+ 
 // ===== MODAL PENALIZACIÓN =====
 function openEditPenalizacion() {
+  if (!requireAdmin()) return;
   const c = couples.find(x => x.id === detailCoupleId);
   if (!c || !c.penalizacion) return;
   const totalPaid = getTotalPaid(c);
   const excedente = totalPaid - (config.cost || 0);
-
+ 
   document.getElementById('pen-info-banner').innerHTML =
     '<div class="pi-name">♡ ' + esc(c.him) + ' & ' + esc(c.her) + '</div>' +
     '<div class="pi-row"><span class="pi-lbl">Penalización actual</span><span class="pi-val amber">$' + fmtMoney(c.penalizacion.amount) + '</span></div>' +
     '<div class="pi-row"><span class="pi-lbl">Total pagado actual</span><span class="pi-val green">$' + fmtMoney(totalPaid) + '</span></div>';
-
+ 
   document.getElementById('pen-amount').value = c.penalizacion.amount;
   document.getElementById('pen-reason').value = c.penalizacion.reason || 'No se presentó al evento';
   document.getElementById('pen-notes').value = c.penalizacion.notes || '';
   document.getElementById('pen-date').value = c.penalizacion.date || new Date().toISOString().split('T')[0];
   closeModal('modal-detail');
   document.getElementById('modal-penalizacion').classList.remove('hidden');
-
+ 
   // Cambiar el botón guardar para que actualice en vez de crear
   document.querySelector('#modal-penalizacion .btn-primary').onclick = saveEditPenalizacion;
   document.querySelector('#modal-penalizacion .modal-header h3').textContent = '✏️ Editar penalización';
 }
-
+ 
 function saveEditPenalizacion() {
+  if (!requireAdmin()) return;
   const amount = parseFloat(document.getElementById('pen-amount').value);
   const reason = document.getElementById('pen-reason').value;
   const notes = document.getElementById('pen-notes').value.trim();
   const date = document.getElementById('pen-date').value;
   if (!amount || amount <= 0) { showToast('Ingresa el monto', 'error'); return; }
-
+ 
   const idx = couples.findIndex(c => c.id === detailCoupleId);
   if (idx === -1) return;
-
+ 
   // Eliminar el pago negativo anterior
   couples[idx].payments = (couples[idx].payments || []).filter(p => p.method !== 'penalizacion');
-
+ 
   // Agregar el nuevo pago negativo
   couples[idx].payments.push({
     id: 'PEN_' + Date.now(),
@@ -911,28 +947,30 @@ function saveEditPenalizacion() {
     registeredBy: currentUser.name,
     registeredAt: new Date().toISOString(),
   });
-
+ 
   // Actualizar metadatos
   couples[idx].penalizacion = { amount, reason, notes, date, registeredBy: currentUser.name, registeredAt: new Date().toISOString() };
   couples[idx].amount = couples[idx].payments.reduce((s, p) => s + (p.amount || 0), 0);
-
+ 
   // Actualizar fondo — ajustar diferencia
   saveToStorage();
+  autoSyncCouple(couples[idx]); // Enviar a Sheets automáticamente
   closeModal('modal-penalizacion');
-
+ 
   // Restaurar botón original
   document.querySelector('#modal-penalizacion .btn-primary').onclick = savePenalizacion;
   document.querySelector('#modal-penalizacion .modal-header h3').textContent = '⚠️ Registrar penalización';
-
+ 
   setTimeout(() => { openDetail(detailCoupleId); showToast('Penalización actualizada ✓', 'success'); }, 200);
   refreshDashboard(); renderCouples();
 }
-
+ 
 function deletePenalizacion() {
+  if (!requireAdmin()) return;
   const c = couples.find(x => x.id === detailCoupleId);
   if (!c || !c.penalizacion) return;
   if (!confirm('¿Eliminar la penalización de $' + fmtMoney(c.penalizacion.amount) + '?\n\nEl monto volverá al total pagado de la pareja.')) return;
-
+ 
   const idx = couples.findIndex(x => x.id === detailCoupleId);
   // Eliminar el pago negativo del historial
   couples[idx].payments = (couples[idx].payments || []).filter(p => p.method !== 'penalizacion');
@@ -940,20 +978,22 @@ function deletePenalizacion() {
   delete couples[idx].penalizacion;
   // Recalcular total
   couples[idx].amount = couples[idx].payments.reduce((s, p) => s + (p.amount || 0), 0);
-
+ 
   saveToStorage();
+  autoSyncCouple(couples[idx], { clearPenalizacion: true }); // Enviar a Sheets automáticamente (limpia la columna Penalización allá)
   closeModal('modal-detail');
   setTimeout(() => { openDetail(detailCoupleId); showToast('Penalización eliminada ✓', ''); }, 200);
   refreshDashboard(); renderCouples();
 }
-
+ 
 function openPenalizacionModal() {
+  if (!requireAdmin()) return;
   const c = couples.find(x => x.id === detailCoupleId);
   if (!c) return;
   const totalPaid = getTotalPaid(c);
   const cost = config.cost || 0;
   const excedente = totalPaid - cost;
-
+ 
   document.getElementById('pen-info-banner').innerHTML =
     '<div class="pi-name">♡ ' + esc(c.him) + ' & ' + esc(c.her) + '</div>' +
     '<div class="pi-row"><span class="pi-lbl">Total pagado</span><span class="pi-val green">$' + fmtMoney(totalPaid) + '</span></div>' +
@@ -961,7 +1001,7 @@ function openPenalizacionModal() {
       ? '<div class="pi-row"><span class="pi-lbl">Excedente sobre costo</span><span class="pi-val amber">$' + fmtMoney(excedente) + '</span></div>'
       : '') +
     '<div class="pi-row"><span class="pi-lbl">El monto penalizado irá al fondo de becas</span></div>';
-
+ 
   // Sugerir el excedente como monto de penalización si aplica
   document.getElementById('pen-amount').value = excedente > 0 ? excedente.toFixed(2) : '';
   document.getElementById('pen-reason').value = 'No se presentó al evento';
@@ -970,25 +1010,26 @@ function openPenalizacionModal() {
   closeModal('modal-detail');
   document.getElementById('modal-penalizacion').classList.remove('hidden');
 }
-
+ 
 function savePenalizacion() {
+  if (!requireAdmin()) return;
   const amount = parseFloat(document.getElementById('pen-amount').value);
   const reason = document.getElementById('pen-reason').value;
   const notes = document.getElementById('pen-notes').value.trim();
   const date = document.getElementById('pen-date').value;
   if (!amount || amount <= 0) { showToast('Ingresa el monto de penalización', 'error'); return; }
   if (!date) { showToast('Selecciona la fecha', 'error'); return; }
-
+ 
   const idx = couples.findIndex(c => c.id === detailCoupleId);
   if (idx === -1) return;
   const c = couples[idx];
   const totalPaid = getTotalPaid(c);
-
+ 
   if (amount > totalPaid) {
     showToast('La penalización no puede ser mayor al total pagado ($' + fmtMoney(totalPaid) + ')', 'error');
     return;
   }
-
+ 
   // Registrar penalización como abono negativo en el historial
   const penPayment = {
     id: 'PEN' + Date.now(),
@@ -1004,7 +1045,7 @@ function savePenalizacion() {
   if (!couples[idx].payments) couples[idx].payments = [];
   couples[idx].payments.push(penPayment);
   couples[idx].amount = couples[idx].payments.reduce((s, p) => s + (p.amount || 0), 0);
-
+ 
   // Marcar pareja como penalizada
   couples[idx].penalizacion = {
     amount, reason, notes, date,
@@ -1012,7 +1053,8 @@ function savePenalizacion() {
     registeredAt: new Date().toISOString(),
   };
   saveToStorage();
-
+  autoSyncCouple(couples[idx]); // Enviar a Sheets automáticamente
+ 
   // Agregar al fondo como entrada
   const fund = getFund();
   fund.movements.push({
@@ -1025,7 +1067,7 @@ function savePenalizacion() {
     registeredAt: new Date().toISOString(),
   });
   saveFund(fund);
-
+ 
   closeModal('modal-penalizacion');
   setTimeout(() => {
     openDetail(detailCoupleId);
@@ -1039,18 +1081,19 @@ function savePenalizacion() {
   refreshDashboard();
   renderCouples();
 }
-
+ 
 // ===== CANCELACIÓN =====
 function openCancelacionModal() {
+  if (!requireAdmin()) return;
   const c = couples.find(x => x.id === detailCoupleId);
   if (!c) return;
   const totalPaid = getTotalPaid(c);
-
+ 
   document.getElementById('cancel-info-banner').innerHTML =
     '<div class="pi-name">♡ ' + esc(c.him) + ' & ' + esc(c.her) + '</div>' +
     '<div class="pi-row"><span class="pi-lbl">Total pagado</span><span class="pi-val green">$' + fmtMoney(totalPaid) + '</span></div>' +
     '<div class="pi-row"><span class="pi-lbl">Cancelación con anticipación</span></div>';
-
+ 
   document.getElementById('cancel-type').value = 'devolucion_total';
   document.getElementById('cancel-amount').value = totalPaid.toFixed(2);
   document.getElementById('cancel-date').value = new Date().toISOString().split('T')[0];
@@ -1060,14 +1103,14 @@ function openCancelacionModal() {
   closeModal('modal-detail');
   document.getElementById('modal-cancelacion').classList.remove('hidden');
 }
-
+ 
 function updateCancelForm() {
   const type = document.getElementById('cancel-type').value;
   const amountSection = document.getElementById('cancel-amount-section');
   const creditoSection = document.getElementById('cancel-credito-section');
   const c = couples.find(x => x.id === detailCoupleId);
   const totalPaid = c ? getTotalPaid(c) : 0;
-
+ 
   if (type === 'devolucion_total') {
     amountSection.classList.remove('hidden');
     creditoSection.classList.add('hidden');
@@ -1083,25 +1126,26 @@ function updateCancelForm() {
     creditoSection.classList.remove('hidden');
   }
 }
-
+ 
 function saveCancelacion() {
+  if (!requireAdmin()) return;
   const type = document.getElementById('cancel-type').value;
   const date = document.getElementById('cancel-date').value;
   const cancelBy = document.getElementById('cancel-by').value.trim();
   const notes = document.getElementById('cancel-notes').value.trim();
-
+ 
   if (!date) { showToast('Selecciona la fecha', 'error'); return; }
   if (!cancelBy) { showToast('Indica quién gestionó la cancelación', 'error'); return; }
-
+ 
   const idx = couples.findIndex(c => c.id === detailCoupleId);
   if (idx === -1) return;
   const c = couples[idx];
   const totalPaid = getTotalPaid(c);
-
+ 
   let amount = 0;
   let historyNote = '';
   let toastMsg = '';
-
+ 
   if (type === 'devolucion_total') {
     amount = totalPaid;
     historyNote = '❌ Cancelación — Devolución total de $' + fmtMoney(amount) + '. Gestionó: ' + cancelBy + (notes ? '. ' + notes : '');
@@ -1117,7 +1161,7 @@ function saveCancelacion() {
     historyNote = '🔄 Cancelación — Crédito para siguiente evento por $' + fmtMoney(totalPaid) + '. Gestionó: ' + cancelBy + (notes ? '. ' + notes : '');
     toastMsg = 'Cancelación con crédito para siguiente evento ✓';
   }
-
+ 
   // Agregar al historial de abonos como movimiento negativo (devolución)
   if (amount > 0) {
     const cancelPayment = {
@@ -1135,30 +1179,31 @@ function saveCancelacion() {
     couples[idx].payments.push(cancelPayment);
     couples[idx].amount = couples[idx].payments.reduce((s, p) => s + (p.amount || 0), 0);
   }
-
+ 
   // Marcar como cancelada y actualizar comentarios
   couples[idx].cancelacion = {
     type, amount, date, cancelBy, notes,
     registeredBy: currentUser.name,
     registeredAt: new Date().toISOString(),
   };
-
+ 
   // Agregar a comentarios
   const prevComments = couples[idx].comments || '';
   const cancelComment = '[' + formatDate(date) + '] ' + historyNote;
   couples[idx].comments = prevComments ? prevComments + '\n' + cancelComment : cancelComment;
-
+ 
   saveToStorage();
+  autoSyncCouple(couples[idx]); // Enviar a Sheets automáticamente
   closeModal('modal-cancelacion');
   setTimeout(() => { openDetail(detailCoupleId); showToast(toastMsg, 'success'); }, 200);
   refreshDashboard();
   renderCouples();
 }
-
+ 
 function deleteCouple() {
   const c = couples.find(x => x.id === detailCoupleId);
   if (!c) return;
-
+ 
   // Mostrar modal de confirmación
   const totalPaid = getTotalPaid(c);
   document.getElementById('delete-confirm-name').textContent = c.him + ' & ' + c.her;
@@ -1166,7 +1211,7 @@ function deleteCouple() {
     c.payments.length + ' abono(s) · $' + fmtMoney(totalPaid) + ' pagado';
   document.getElementById('modal-delete-confirm').classList.remove('hidden');
 }
-
+ 
 function confirmDeleteCouple() {
   couples = couples.filter(x => x.id !== detailCoupleId);
   saveToStorage();
@@ -1178,7 +1223,7 @@ function confirmDeleteCouple() {
   renderPayments();
   renderDocuments();
 }
-
+ 
 function deletePayment(coupleId, paymentId) {
   if (!confirm('¿Eliminar este abono? Esta acción no se puede deshacer.')) return;
   const idx = couples.findIndex(c => c.id === coupleId);
@@ -1191,7 +1236,7 @@ function deletePayment(coupleId, paymentId) {
   renderCouples();
   showToast('Abono eliminado', '');
 }
-
+ 
 // ===== NUEVA / EDITAR PAREJA =====
 function openNewCoupleModal(coupleIdToEdit) {
   editingCoupleId = coupleIdToEdit || null;
@@ -1214,7 +1259,7 @@ function openNewCoupleModal(coupleIdToEdit) {
   document.getElementById('cp-reg-date').value = new Date().toISOString().split('T')[0];
   document.getElementById('modal-cost').textContent = '$' + fmtMoney(config.cost || 0);
   document.getElementById('modal-pending').textContent = '$' + fmtMoney(config.cost || 0);
-
+ 
   if (coupleIdToEdit) {
     const c = couples.find(x => x.id === coupleIdToEdit);
     if (c) {
@@ -1245,19 +1290,19 @@ function openNewCoupleModal(coupleIdToEdit) {
   }
   document.getElementById('modal-couple').classList.remove('hidden');
 }
-
+ 
 function editCouple() {
   closeModal('modal-detail');
   setTimeout(() => openNewCoupleModal(detailCoupleId), 100);
 }
-
+ 
 function updatePaymentStatus() {
   const amount = parseFloat(document.getElementById('cp-amount').value) || 0;
   document.getElementById('modal-pending').textContent = '$' + fmtMoney(Math.max(0, (config.cost || 0) - amount));
 }
-
+ 
 function triggerUpload(inputId) { document.getElementById(inputId).click(); }
-
+ 
 function handleDocUpload(type, input) {
   const file = input.files[0];
   if (!file) return;
@@ -1271,7 +1316,7 @@ function handleDocUpload(type, input) {
   };
   reader.readAsDataURL(file);
 }
-
+ 
 function saveCouple() {
   const him = document.getElementById('cp-him').value.trim();
   const her = document.getElementById('cp-her').value.trim();
@@ -1347,7 +1392,7 @@ function saveCouple() {
   showToast(editingCoupleId ? 'Registro actualizado ✓' : 'Pareja registrada ✓', 'success');
   refreshDashboard(); renderCouples();
 }
-
+ 
 // ===== USERS =====
 function renderUsers() {
   document.getElementById('users-list').innerHTML = users.map(u => {
@@ -1364,7 +1409,7 @@ function renderUsers() {
     '</div>';
   }).join('');
 }
-
+ 
 function openNewUserModal() {
   ['u-name','u-email','u-pass'].forEach(f => document.getElementById(f).value = '');
   document.getElementById('u-role').value = 'registrador';
@@ -1373,7 +1418,7 @@ function openNewUserModal() {
   document.getElementById('modal-user-title').textContent = 'Agregar usuario';
   document.getElementById('modal-user').classList.remove('hidden');
 }
-
+ 
 function openEditUserModal(userId) {
   const u = users.find(x => x.id === userId);
   if (!u) return;
@@ -1386,7 +1431,7 @@ function openEditUserModal(userId) {
   document.getElementById('modal-user-title').textContent = 'Editar usuario';
   document.getElementById('modal-user').classList.remove('hidden');
 }
-
+ 
 function deleteUser(userId) {
   const u = users.find(x => x.id === userId);
   if (!u) return;
@@ -1397,7 +1442,7 @@ function deleteUser(userId) {
   renderUsers();
   showToast('Usuario eliminado', '');
 }
-
+ 
 function saveUser() {
   const id = document.getElementById('u-id').value;
   const name = document.getElementById('u-name').value.trim();
@@ -1405,7 +1450,7 @@ function saveUser() {
   const pass = document.getElementById('u-pass').value;
   const role = document.getElementById('u-role').value;
   if (!name || !email) { showToast('Completa nombre y usuario', 'error'); return; }
-
+ 
   if (id) {
     // Editar usuario existente
     const idx = users.findIndex(u => u.id == id);
@@ -1441,9 +1486,19 @@ function saveUser() {
   renderUsers();
   closeModal('modal-user');
 }
-
+ 
 // ===== SINCRONIZACIÓN AUTOMÁTICA AL GUARDAR =====
-async function autoSyncCouple(couple) {
+// opts.clearPenalizacion: true SOLO cuando esta llamada viene de borrar
+// una penalización explícitamente (deletePenalizacion). Es necesario
+// distinguir "el usuario la borró" de "este dispositivo nunca se enteró
+// de que existía" — si no, un dispositivo que no conoce una beca o
+// penalización que otro registrador asignó podría, sin querer, mandar
+// null y borrarla en Sheets en su próxima sincronización por cualquier
+// otro motivo (p. ej. un abono nuevo). El servidor solo borra la
+// columna Penalización cuando ve esta bandera explícita; de lo
+// contrario, si no viene un valor, deja la celda como está.
+async function autoSyncCouple(couple, opts) {
+  opts = opts || {};
   if (!config.scriptUrl) {
     pendingSync.add(couple.id);
     savePendingSync();
@@ -1457,7 +1512,7 @@ async function autoSyncCouple(couple) {
     if (cost > 0 && totalPaid >= cost) payStatus = 'Pagado';
     else if (totalPaid > 0) payStatus = 'Parcial';
     if (couple.cancelacion) payStatus = 'Cancelada';
-
+ 
     await fetch(config.scriptUrl, {
       method: 'POST', mode: 'no-cors',
       headers: { 'Content-Type': 'application/json' },
@@ -1474,6 +1529,10 @@ async function autoSyncCouple(couple) {
           docsId:   couple.docs && couple.docs.id   ? 'Sí' : 'No',
           docsPhoto:couple.docs && couple.docs.photo ? 'Sí' : 'No',
           createdBy: couple.createdBy || '', createdAt: couple.createdAt || '',
+          beca: couple.beca ? { amount: couple.beca.amount, reason: couple.beca.reason || '' } : null,
+          penalizacion: couple.penalizacion ? { amount: couple.penalizacion.amount, reason: couple.penalizacion.reason || '' } : null,
+          penalizacionCleared: !!opts.clearPenalizacion,
+          cancelacion: couple.cancelacion ? { type: couple.cancelacion.type } : null,
           payments: (couple.payments || []).map(p => ({
             id: p.id, amount: p.amount, date: p.date,
             receivedBy: p.receivedBy, method: p.method, note: p.note,
@@ -1492,7 +1551,7 @@ async function autoSyncCouple(couple) {
     console.warn('Auto-sync failed, queued:', couple.id);
   }
 }
-
+ 
 async function retryPendingSync() {
   if (pendingSync.size === 0 || !config.scriptUrl) return;
   const toRetry = [...pendingSync];
@@ -1501,7 +1560,7 @@ async function retryPendingSync() {
     if (c) await autoSyncCouple(c);
   }
 }
-
+ 
 function updateSyncBadge() {
   const el = document.getElementById('sync-indicator');
   if (!el) return;
@@ -1511,16 +1570,16 @@ function updateSyncBadge() {
     el.innerHTML = '';
   }
 }
-
+ 
 // ===== SINCRONIZACIÓN COMPLETA (Admin + Reg. Principal) =====
 async function fullSync() {
   if (!config.scriptUrl) { showToast('Configura la URL del Apps Script primero', 'error'); return; }
-
+ 
   const btn = document.getElementById('btn-full-sync');
   if (btn) { btn.disabled = true; btn.textContent = '⟳ Sincronizando...'; }
-
+ 
   let uploaded = 0, downloaded = 0, errors = 0;
-
+ 
   try {
     // 1. SUBIR — enviar todas las parejas locales (upsert)
     for (const c of couples) {
@@ -1530,7 +1589,7 @@ async function fullSync() {
         await new Promise(r => setTimeout(r, 150));
       } catch (e) { errors++; }
     }
-
+ 
     // 2. BAJAR — descargar desde Sheets y hacer merge
     const res = await fetch(config.scriptUrl + '?action=getCouples', { mode: 'cors' });
     if (res.ok) {
@@ -1538,7 +1597,7 @@ async function fullSync() {
       if (data && data.couples && data.couples.length > 0) {
         const localMap = {};
         couples.forEach(c => { localMap[c.id] = c; });
-
+ 
         data.couples.forEach(sc => {
           if (!sc.id || (!sc.him && !sc.her)) return;
           if (localMap[sc.id]) {
@@ -1554,14 +1613,14 @@ async function fullSync() {
               comments: sc.comments || local.comments,
               docs: local.docs || {},
               docLog: local.docLog || [],
-              payments: local.payments && local.payments.length > 0 ? local.payments : (sc.payments || []),
+              payments: mergePayments(local.payments, sc.payments),
             };
           } else {
             localMap[sc.id] = { ...sc, docs: {}, docLog: [], payments: sc.payments || [] };
             downloaded++;
           }
         });
-
+ 
         couples = Object.values(localMap);
         couples.forEach((c, i) => {
           if (c.payments && c.payments.length > 0) {
@@ -1573,36 +1632,36 @@ async function fullSync() {
         renderCouples();
       }
     }
-
+ 
     const msg = '✅ Subidas: ' + uploaded + ' · Nuevas bajadas: ' + downloaded + (errors > 0 ? ' · Errores: ' + errors : '');
     showToast(msg, 'success');
     const resultEl = document.getElementById('sync-result');
     if (resultEl) { resultEl.textContent = msg; resultEl.classList.remove('hidden'); }
     updateSyncBadge();
-
+ 
   } catch (e) {
     showToast('Error de sincronización', 'error');
   }
-
+ 
   if (btn) { btn.disabled = false; btn.textContent = '⟳ Sincronizar'; }
 }
-
+ 
 // ===== ACTUALIZAR — solo descarga (para Registradores) =====
 async function downloadFromSheets() {
   if (!config.scriptUrl) { showToast('Sin conexión configurada', 'error'); return; }
   const btn = document.getElementById('btn-download-sync');
   if (btn) { btn.disabled = true; btn.textContent = '↓ Actualizando...'; }
-
+ 
   try {
     const res = await fetch(config.scriptUrl + '?action=getCouples', { mode: 'cors' });
     if (!res.ok) { showToast('Error de conexión', 'error'); if (btn) { btn.disabled = false; btn.textContent = '↓ Actualizar lista'; } return; }
     const data = await res.json();
-
+ 
     if (data && data.couples && data.couples.length > 0) {
       const localMap = {};
       couples.forEach(c => { localMap[c.id] = c; });
       let newCount = 0;
-
+ 
       data.couples.forEach(sc => {
         if (!sc.id || (!sc.him && !sc.her)) return;
         if (localMap[sc.id]) {
@@ -1616,14 +1675,14 @@ async function downloadFromSheets() {
             comments: sc.comments || local.comments,
             docs: local.docs || {},
             docLog: local.docLog || [],
-            payments: local.payments && local.payments.length > 0 ? local.payments : (sc.payments || []),
+            payments: mergePayments(local.payments, sc.payments),
           };
         } else {
           localMap[sc.id] = { ...sc, docs: {}, docLog: [], payments: sc.payments || [] };
           newCount++;
         }
       });
-
+ 
       couples = Object.values(localMap);
       couples.forEach((c, i) => {
         if (c.payments && c.payments.length > 0) {
@@ -1642,7 +1701,7 @@ async function downloadFromSheets() {
   }
   if (btn) { btn.disabled = false; btn.textContent = '↓ Actualizar lista'; }
 }
-
+ 
 async function testConnection() {
   const btn = document.querySelector('[onclick="testConnection()"]');
   const statusEl = document.getElementById('conn-status');
@@ -1662,12 +1721,12 @@ async function testConnection() {
   }
   if (btn) { btn.textContent = 'Probar conexión'; btn.disabled = false; }
 }
-
+ 
 function logActivity(msg) {
   // Log local — la actividad se registra en Sheets durante el syncAll
   console.log('[REMA]', msg);
 }
-
+ 
 async function syncPaymentToSheets(payment, couple) {
   if (!config.scriptUrl) return;
   try {
@@ -1689,7 +1748,7 @@ async function syncPaymentToSheets(payment, couple) {
     });
   } catch (e) { console.warn('Payment sync error:', e); }
 }
-
+ 
 async function syncToSheets(couple) {
   if (!config.scriptUrl) return;
   try {
@@ -1713,29 +1772,29 @@ async function syncToSheets(couple) {
     });
   } catch (e) { console.warn('Sheets sync error:', e); }
 }
-
+ 
 async function resetAndSync() {
   if (!config.scriptUrl) { showToast('Configura primero la URL del Apps Script', 'error'); return; }
   if (!confirm('⚠️ Esto borrará TODOS los datos locales y los reemplazará con los de Google Sheets.\n\nLos documentos (fotos/PDFs) guardados localmente se perderán.\n\n¿Continuar?')) return;
-
+ 
   showToast('Descargando datos de Sheets...', '');
-
+ 
   try {
     const res = await fetch(config.scriptUrl + '?action=getCouples', { mode: 'cors' });
     if (!res.ok) { showToast('Error de conexión', 'error'); return; }
     const data = await res.json();
-
+ 
     if (!data || !data.couples || data.couples.length === 0) {
       showToast('No hay datos en Sheets para descargar', 'error');
       return;
     }
-
+ 
     const validCouples = data.couples.filter(c => c.id && (c.him || c.her));
     if (validCouples.length === 0) {
       showToast('Los datos de Sheets no son válidos', 'error');
       return;
     }
-
+ 
     // Limpiar y reemplazar con datos limpios de Sheets
     couples = validCouples.map(c => ({
       ...c,
@@ -1744,7 +1803,7 @@ async function resetAndSync() {
       payments: c.payments || [],
       amount: (c.payments || []).reduce((s, p) => s + (p.amount || 0), 0) || c.amount || 0,
     }));
-
+ 
     saveToStorage();
     refreshDashboard();
     renderCouples();
@@ -1753,7 +1812,7 @@ async function resetAndSync() {
     showToast('Error al descargar: ' + e.message, 'error');
   }
 }
-
+ 
 async function syncFromSheets(silent = false) {
   if (!config.scriptUrl) return;
   try {
@@ -1768,11 +1827,11 @@ async function syncFromSheets(silent = false) {
         if (!silent) showSyncIndicator('error');
         return;
       }
-
+ 
       // Merge: actualizar datos de Sheets, preservar docs y pagos locales
       const localMap = {};
       couples.forEach(c => { localMap[c.id] = c; });
-
+ 
       validCouples.forEach(sc => {
         if (localMap[sc.id]) {
           const local = localMap[sc.id];
@@ -1792,7 +1851,7 @@ async function syncFromSheets(silent = false) {
               // Preservar siempre lo local
               docs: local.docs || {},
               docLog: local.docLog || [],
-              payments: local.payments && local.payments.length > 0 ? local.payments : (sc.payments || []),
+              payments: mergePayments(local.payments, sc.payments),
               beca: local.beca || sc.beca,
               penalizacion: local.penalizacion || sc.penalizacion,
               cancelacion: local.cancelacion || sc.cancelacion,
@@ -1808,16 +1867,16 @@ async function syncFromSheets(silent = false) {
           };
         }
       });
-
+ 
       couples = Object.values(localMap);
-
+ 
       // Recalcular totales
       couples.forEach((c, i) => {
         if (c.payments && c.payments.length > 0) {
           couples[i].amount = c.payments.reduce((s, p) => s + (p.amount || 0), 0);
         }
       });
-
+ 
       saveToStorage();
       lastSyncTime = new Date();
       refreshDashboard();
@@ -1829,7 +1888,7 @@ async function syncFromSheets(silent = false) {
     if (!silent) showSyncIndicator('error');
   }
 }
-
+ 
 function showSyncIndicator(status) {
   const el = document.getElementById('sync-indicator');
   if (!el) return;
@@ -1844,7 +1903,7 @@ function showSyncIndicator(status) {
     setTimeout(() => { if (el) el.innerHTML = ''; }, 4000);
   }
 }
-
+ 
 async function testConnection() {
   const btn = document.querySelector('[onclick="testConnection()"]');
   const statusEl = document.getElementById('conn-status');
@@ -1863,13 +1922,13 @@ async function testConnection() {
   }
   btn.textContent = 'Probar conexión'; btn.disabled = false;
 }
-
+ 
 // ===== MODALES =====
 function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
 document.querySelectorAll('.modal-overlay').forEach(m => {
   m.addEventListener('click', e => { if (e.target === m) closeModal(m.id); });
 });
-
+ 
 // ===== TOAST =====
 let toastTimer;
 function showToast(msg, type) {
