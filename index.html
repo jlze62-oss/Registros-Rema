@@ -65,6 +65,7 @@
       <a class="nav-item admin-only hidden" onclick="showView('becas')" data-view="becas"><span class="nav-icon">🎓</span> Becas</a>
     </nav>
     <button class="btn-logout" onclick="doLogout()">Cerrar sesión</button>
+    <button class="btn-download-sidebar" id="btn-download-sync" onclick="downloadFromSheets()">↓ Actualizar lista</button>
   </nav>
   <div id="sidebar-overlay" class="sidebar-overlay hidden" onclick="toggleSidebar()"></div>
 
@@ -184,15 +185,11 @@
       </div>
 
       <div class="card mt16">
-        <div class="card-header"><span class="card-title">Sincronización masiva</span></div>
-        <p style="font-size:13px;color:#666;margin-bottom:14px;">Envía todos los datos de la app a Google Sheets de una sola vez. Útil cuando importaste registros o hay datos que no se sincronizaron.</p>
-        <div id="sync-progress" class="hidden">
-          <div class="progress-bar" style="margin-bottom:8px"><div class="progress-fill" id="sync-progress-fill" style="width:0%"></div></div>
-          <div style="font-size:12px;color:#888;text-align:center;margin-bottom:12px" id="sync-status-text">Sincronizando...</div>
-        </div>
-        <div id="sync-result" class="hidden success-msg mt8"></div>
-        <button class="btn-primary full" id="btn-sync-all" onclick="syncAllToSheets()">🔄 Sincronizar todo con Google Sheets</button>
-        <button class="btn-outline full mt8" id="btn-reset-sync" onclick="resetAndSync()" style="border-color:#C0392B;color:#C0392B;">⚠️ Resetear datos locales y descargar de Sheets</button>
+        <div class="card-header"><span class="card-title">Sincronización</span></div>
+        <p style="font-size:13px;color:#666;margin-bottom:14px;">Sube todos los registros locales a Sheets y descarga los nuevos de otros dispositivos. Usa el ID único de cada pareja para evitar duplicados.</p>
+        <div id="sync-result" class="hidden success-msg mt8" style="margin-bottom:12px;"></div>
+        <button class="btn-primary full" id="btn-full-sync" onclick="fullSync()">⟳ Sincronizar</button>
+        <button class="btn-outline full mt8" id="btn-reset-sync" onclick="resetAndSync()" style="border-color:#C0392B;color:#C0392B;">⚠️ Resetear y descargar de Sheets</button>
       </div>
     </div>
 

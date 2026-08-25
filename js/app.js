@@ -9,10 +9,12 @@ let docData = { acta: null, id: null, photo: null };
 let detailCoupleId = null;
 let syncTimer = null;
 let lastSyncTime = null;
+let pendingSync = new Set(); // IDs de parejas pendientes de sincronizar
 
 // ===== ROLES =====
 function isAdmin() { return currentUser && currentUser.role === 'admin'; }
 function isRegPrincipal() { return currentUser && (currentUser.role === 'admin' || currentUser.role === 'registrador_principal' || currentUser.email === 'mcastillo'); }
+function canSync() { return isAdmin() || isRegPrincipal(); } // puede hacer sincronización completa
 function canEdit() { return isAdmin(); }
 function canViewDocs() { return isAdmin() || isRegPrincipal(); }
 function canRegister() { return currentUser && ['admin','registrador_principal','registrador'].includes(currentUser.role); }
@@ -28,6 +30,7 @@ function loadFromStorage() {
   config = JSON.parse(localStorage.getItem('rm_config') || '{}');
   users = JSON.parse(localStorage.getItem('rm_users') || '[]');
   couples = JSON.parse(localStorage.getItem('rm_couples') || '[]');
+  pendingSync = new Set(JSON.parse(localStorage.getItem('rm_pending') || '[]'));
 
   // Corregir penalizaciones que quedaron en metadatos pero no en historial de pagos
   let changed = false;
@@ -50,16 +53,12 @@ function loadFromStorage() {
         changed = true;
       }
     }
-
     // Recalcular totales desde historial de pagos
     if (couples[i].payments && couples[i].payments.length > 0) {
       couples[i].amount = couples[i].payments.reduce((s, p) => s + (p.amount || 0), 0);
     }
   });
-
-  if (changed) {
-    localStorage.setItem('rm_couples', JSON.stringify(couples));
-  }
+  if (changed) localStorage.setItem('rm_couples', JSON.stringify(couples));
 
   if (users.length === 0) {
     users = [
@@ -68,6 +67,10 @@ function loadFromStorage() {
     ];
     saveUsers();
   }
+}
+
+function savePendingSync() {
+  localStorage.setItem('rm_pending', JSON.stringify([...pendingSync]));
 }
 
 function checkSession() {
@@ -700,7 +703,7 @@ function savePayment() {
   couples[idx].payments.push(payment);
   couples[idx].amount = couples[idx].payments.reduce((s, p) => s + (p.amount || 0), 0);
   saveToStorage();
-  syncPaymentToSheets(payment, couples[idx]);
+  autoSyncCouple(couples[idx]); // Enviar a Sheets automáticamente
   closeModal('modal-payment');
   setTimeout(() => { openDetail(detailCoupleId); showToast('Abono registrado ✓', 'success'); }, 200);
   refreshDashboard();
@@ -1338,7 +1341,7 @@ function saveCouple() {
     couples.unshift(couple);
   }
   saveToStorage();
-  syncToSheets(couple);
+  autoSyncCouple(couple); // Enviar a Sheets automáticamente
   btn.disabled = false; btn.textContent = 'Guardar registro';
   closeModal('modal-couple');
   showToast(editingCoupleId ? 'Registro actualizado ✓' : 'Pareja registrada ✓', 'success');
@@ -1439,130 +1442,225 @@ function saveUser() {
   closeModal('modal-user');
 }
 
-// ===== GOOGLE SHEETS SYNC =====
-async function syncAllToSheets() {
+// ===== SINCRONIZACIÓN AUTOMÁTICA AL GUARDAR =====
+async function autoSyncCouple(couple) {
   if (!config.scriptUrl) {
-    showToast('Configura primero la URL del Apps Script', 'error');
+    pendingSync.add(couple.id);
+    savePendingSync();
     return;
   }
-
-  const btn = document.getElementById('btn-sync-all');
-  const progressEl = document.getElementById('sync-progress');
-  const fillEl = document.getElementById('sync-progress-fill');
-  const statusEl = document.getElementById('sync-status-text');
-  const resultEl = document.getElementById('sync-result');
-
-  btn.disabled = true;
-  btn.textContent = '⏳ Sincronizando...';
-  progressEl.classList.remove('hidden');
-  resultEl.classList.add('hidden');
-  resultEl.style.background = '';
-  resultEl.style.color = '';
-
-  let success = 0;
-  let errors = 0;
-  const total = couples.length;
-
-  for (let i = 0; i < couples.length; i++) {
-    const c = couples[i];
-    const pct = Math.round((i + 1) / total * 100);
-    fillEl.style.width = pct + '%';
-    statusEl.textContent = 'Enviando ' + (i + 1) + ' de ' + total + ': ' + c.him + '...';
-
-    try {
-      const totalPaid = getTotalPaid(c);
-      const cost = config.cost || 0;
-      const pending = Math.max(0, cost - totalPaid);
-      let payStatus = 'Sin pago';
-      if (cost > 0 && totalPaid >= cost) payStatus = 'Pagado';
-      else if (totalPaid > 0) payStatus = 'Parcial';
-      if (c.cancelacion) payStatus = 'Cancelada';
-
-      await fetch(config.scriptUrl, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'saveCouple',
-          couple: {
-            num: i + 1,
-            id: c.id, him: c.him, her: c.her,
-            telHim: c.telHim || '', telHer: c.telHer || '',
-            emailHim: c.emailHim || '', emailHer: c.emailHer || '',
-            amount: totalPaid, receivedBy: c.receivedBy || '',
-            comments: c.comments || '',
-            regDate: c.regDate || '', eventDate: c.eventDate || '',
-            docsActa: c.docs && c.docs.acta ? 'Sí' : 'No',
-            docsId:   c.docs && c.docs.id   ? 'Sí' : 'No',
-            docsPhoto:c.docs && c.docs.photo ? 'Sí' : 'No',
-            createdBy: c.createdBy || '', createdAt: c.createdAt || '',
-          }
-        })
-      });
-
-      // Enviar cada pago de la pareja
-      for (const p of (c.payments || [])) {
-        await fetch(config.scriptUrl, {
-          method: 'POST',
-          mode: 'no-cors',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'savePayment',
-            payment: { ...p, him: c.him, her: c.her },
-            coupleUpdate: { id: c.id, totalPaid, pending, payStatus, numPayments: (c.payments||[]).length }
-          })
-        });
-      }
-
-      success++;
-    } catch (e) {
-      errors++;
-      console.warn('Error sincronizando', c.him, e);
-    }
-
-    // Pequeña pausa para no saturar el servidor
-    await new Promise(r => setTimeout(r, 300));
-  }
-
-  fillEl.style.width = '100%';
-  statusEl.textContent = 'Sincronizando pagos...';
-
-  // Sincronizar todos los pagos de una vez
   try {
-    const allPayments = [];
-    couples.forEach(c => {
-      (c.payments || []).forEach(p => allPayments.push({ ...p, him: c.him, her: c.her }));
-    });
-    if (allPayments.length > 0) {
-      await fetch(config.scriptUrl, {
-        method: 'POST', mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'syncPayments', payments: allPayments })
-      });
-    }
-  } catch(e) { console.warn('Payments sync error', e); }
+    const totalPaid = getTotalPaid(couple);
+    const cost = config.cost || 0;
+    const pending = Math.max(0, cost - totalPaid);
+    let payStatus = 'Sin pago';
+    if (cost > 0 && totalPaid >= cost) payStatus = 'Pagado';
+    else if (totalPaid > 0) payStatus = 'Parcial';
+    if (couple.cancelacion) payStatus = 'Cancelada';
 
-  statusEl.textContent = 'Sincronizando usuarios...';
-
-  // Sincronizar usuarios
-  try {
-    const safeUsers = users.map(u => ({ id: u.id, name: u.name, email: u.email, role: u.role }));
     await fetch(config.scriptUrl, {
       method: 'POST', mode: 'no-cors',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'syncUsers', users: safeUsers })
+      body: JSON.stringify({
+        action: 'upsertCouple',
+        couple: {
+          id: couple.id, him: couple.him, her: couple.her,
+          telHim: couple.telHim || '', telHer: couple.telHer || '',
+          emailHim: couple.emailHim || '', emailHer: couple.emailHer || '',
+          amount: totalPaid, pending, payStatus,
+          comments: couple.comments || '',
+          regDate: couple.regDate || '', eventDate: couple.eventDate || '',
+          docsActa: couple.docs && couple.docs.acta ? 'Sí' : 'No',
+          docsId:   couple.docs && couple.docs.id   ? 'Sí' : 'No',
+          docsPhoto:couple.docs && couple.docs.photo ? 'Sí' : 'No',
+          createdBy: couple.createdBy || '', createdAt: couple.createdAt || '',
+          payments: (couple.payments || []).map(p => ({
+            id: p.id, amount: p.amount, date: p.date,
+            receivedBy: p.receivedBy, method: p.method, note: p.note,
+            registeredBy: p.registeredBy
+          }))
+        }
+      })
     });
-  } catch(e) { console.warn('Users sync error', e); }
+    pendingSync.delete(couple.id);
+    savePendingSync();
+    updateSyncBadge();
+  } catch (e) {
+    pendingSync.add(couple.id);
+    savePendingSync();
+    updateSyncBadge();
+    console.warn('Auto-sync failed, queued:', couple.id);
+  }
+}
 
-  statusEl.textContent = '¡Completado!';
+async function retryPendingSync() {
+  if (pendingSync.size === 0 || !config.scriptUrl) return;
+  const toRetry = [...pendingSync];
+  for (const id of toRetry) {
+    const c = couples.find(x => x.id === id);
+    if (c) await autoSyncCouple(c);
+  }
+}
 
-  resultEl.textContent = '✅ ' + success + ' parejas sincronizadas' + (errors > 0 ? ' · ' + errors + ' errores' : '') + ' — Revisa tu Google Sheets';
-  resultEl.classList.remove('hidden');
+function updateSyncBadge() {
+  const el = document.getElementById('sync-indicator');
+  if (!el) return;
+  if (pendingSync.size > 0) {
+    el.innerHTML = '<span style="background:#B06000;color:#fff;border-radius:10px;padding:2px 8px;font-size:11px;">⟳ ' + pendingSync.size + ' pendiente(s)</span>';
+  } else {
+    el.innerHTML = '';
+  }
+}
 
-  btn.disabled = false;
-  btn.textContent = '🔄 Sincronizar todo con Google Sheets';
-  showToast('Sincronización completada ✓', 'success');
-  setTimeout(() => progressEl.classList.add('hidden'), 4000);
+// ===== SINCRONIZACIÓN COMPLETA (Admin + Reg. Principal) =====
+async function fullSync() {
+  if (!config.scriptUrl) { showToast('Configura la URL del Apps Script primero', 'error'); return; }
+
+  const btn = document.getElementById('btn-full-sync');
+  if (btn) { btn.disabled = true; btn.textContent = '⟳ Sincronizando...'; }
+
+  let uploaded = 0, downloaded = 0, errors = 0;
+
+  try {
+    // 1. SUBIR — enviar todas las parejas locales (upsert)
+    for (const c of couples) {
+      try {
+        await autoSyncCouple(c);
+        uploaded++;
+        await new Promise(r => setTimeout(r, 150));
+      } catch (e) { errors++; }
+    }
+
+    // 2. BAJAR — descargar desde Sheets y hacer merge
+    const res = await fetch(config.scriptUrl + '?action=getCouples', { mode: 'cors' });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.couples && data.couples.length > 0) {
+        const localMap = {};
+        couples.forEach(c => { localMap[c.id] = c; });
+
+        data.couples.forEach(sc => {
+          if (!sc.id || (!sc.him && !sc.her)) return;
+          if (localMap[sc.id]) {
+            const local = localMap[sc.id];
+            localMap[sc.id] = {
+              ...local,
+              him: sc.him || local.him,
+              her: sc.her || local.her,
+              telHim: sc.telHim || local.telHim,
+              telHer: sc.telHer || local.telHer,
+              emailHim: sc.emailHim || local.emailHim,
+              emailHer: sc.emailHer || local.emailHer,
+              comments: sc.comments || local.comments,
+              docs: local.docs || {},
+              docLog: local.docLog || [],
+              payments: local.payments && local.payments.length > 0 ? local.payments : (sc.payments || []),
+            };
+          } else {
+            localMap[sc.id] = { ...sc, docs: {}, docLog: [], payments: sc.payments || [] };
+            downloaded++;
+          }
+        });
+
+        couples = Object.values(localMap);
+        couples.forEach((c, i) => {
+          if (c.payments && c.payments.length > 0) {
+            couples[i].amount = c.payments.reduce((s, p) => s + (p.amount || 0), 0);
+          }
+        });
+        saveToStorage();
+        refreshDashboard();
+        renderCouples();
+      }
+    }
+
+    const msg = '✅ Subidas: ' + uploaded + ' · Nuevas bajadas: ' + downloaded + (errors > 0 ? ' · Errores: ' + errors : '');
+    showToast(msg, 'success');
+    const resultEl = document.getElementById('sync-result');
+    if (resultEl) { resultEl.textContent = msg; resultEl.classList.remove('hidden'); }
+    updateSyncBadge();
+
+  } catch (e) {
+    showToast('Error de sincronización', 'error');
+  }
+
+  if (btn) { btn.disabled = false; btn.textContent = '⟳ Sincronizar'; }
+}
+
+// ===== ACTUALIZAR — solo descarga (para Registradores) =====
+async function downloadFromSheets() {
+  if (!config.scriptUrl) { showToast('Sin conexión configurada', 'error'); return; }
+  const btn = document.getElementById('btn-download-sync');
+  if (btn) { btn.disabled = true; btn.textContent = '↓ Actualizando...'; }
+
+  try {
+    const res = await fetch(config.scriptUrl + '?action=getCouples', { mode: 'cors' });
+    if (!res.ok) { showToast('Error de conexión', 'error'); if (btn) { btn.disabled = false; btn.textContent = '↓ Actualizar lista'; } return; }
+    const data = await res.json();
+
+    if (data && data.couples && data.couples.length > 0) {
+      const localMap = {};
+      couples.forEach(c => { localMap[c.id] = c; });
+      let newCount = 0;
+
+      data.couples.forEach(sc => {
+        if (!sc.id || (!sc.him && !sc.her)) return;
+        if (localMap[sc.id]) {
+          const local = localMap[sc.id];
+          localMap[sc.id] = {
+            ...local,
+            him: sc.him || local.him,
+            her: sc.her || local.her,
+            telHim: sc.telHim || local.telHim,
+            telHer: sc.telHer || local.telHer,
+            comments: sc.comments || local.comments,
+            docs: local.docs || {},
+            docLog: local.docLog || [],
+            payments: local.payments && local.payments.length > 0 ? local.payments : (sc.payments || []),
+          };
+        } else {
+          localMap[sc.id] = { ...sc, docs: {}, docLog: [], payments: sc.payments || [] };
+          newCount++;
+        }
+      });
+
+      couples = Object.values(localMap);
+      couples.forEach((c, i) => {
+        if (c.payments && c.payments.length > 0) {
+          couples[i].amount = c.payments.reduce((s, p) => s + (p.amount || 0), 0);
+        }
+      });
+      saveToStorage();
+      refreshDashboard();
+      renderCouples();
+      showToast('✅ Actualizado' + (newCount > 0 ? ' · ' + newCount + ' registros nuevos' : ''), 'success');
+    } else {
+      showToast('No hay datos nuevos', '');
+    }
+  } catch (e) {
+    showToast('Error al actualizar', 'error');
+  }
+  if (btn) { btn.disabled = false; btn.textContent = '↓ Actualizar lista'; }
+}
+
+async function testConnection() {
+  const btn = document.querySelector('[onclick="testConnection()"]');
+  const statusEl = document.getElementById('conn-status');
+  if (btn) { btn.textContent = 'Probando...'; btn.disabled = true; }
+  if (!config.scriptUrl) {
+    statusEl.innerHTML = '<span class="dot red"></span> Sin URL configurada';
+    if (btn) { btn.textContent = 'Probar conexión'; btn.disabled = false; }
+    return;
+  }
+  try {
+    const res = await fetch(config.scriptUrl + '?action=ping', { mode: 'cors' });
+    statusEl.innerHTML = res.ok
+      ? '<span class="dot green"></span> Conectado a Google Sheets'
+      : '<span class="dot amber"></span> Respuesta inesperada';
+  } catch (e) {
+    statusEl.innerHTML = '<span class="dot red"></span> No se pudo conectar — verifica la URL';
+  }
+  if (btn) { btn.textContent = 'Probar conexión'; btn.disabled = false; }
 }
 
 function logActivity(msg) {

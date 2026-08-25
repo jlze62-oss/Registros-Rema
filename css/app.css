@@ -282,3 +282,17 @@ a { cursor: pointer; text-decoration: none; }
 
 /* ===== REG PRINCIPAL BADGE ===== */
 .badge-reg-principal { background: #F0F4FF; color: #4A3FAA; }
+
+/* ===== SYNC BUTTONS ===== */
+.btn-download-sidebar {
+  margin: 8px 16px 16px;
+  background: rgba(255,255,255,0.12);
+  color: #E8C4B8;
+  border: 1px solid rgba(232,196,184,0.3);
+  border-radius: 10px;
+  padding: 10px;
+  font-size: 14px;
+  width: calc(100% - 32px);
+  cursor: pointer;
+}
+.btn-download-sidebar:hover { background: rgba(255,255,255,0.18); }
