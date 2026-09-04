@@ -131,6 +131,51 @@ function saveConfig() {
   setTimeout(() => document.getElementById('cfg-msg').classList.add('hidden'), 2500);
   showToast('Configuración guardada', 'success');
   refreshDashboard();
+  pushConfigToServer();
+}
+
+// Sube solo los datos del evento (nombre, fechas, costo) a la hoja
+// Configuracion — la URL del script y el ID de la hoja se quedan locales
+// a propósito, para que un dispositivo nunca pueda pisarle a otro la
+// conexión que ya tiene funcionando.
+async function pushConfigToServer() {
+  if (!config.scriptUrl) return;
+  try {
+    await fetch(config.scriptUrl, {
+      method: 'POST', mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'saveConfig',
+        config: {
+          eventName: config.eventName || '',
+          dateStart: config.dateStart || '',
+          dateEnd: config.dateEnd || '',
+          cost: config.cost || 0,
+        }
+      })
+    });
+  } catch (e) { console.warn('No se pudo sincronizar configuración al servidor:', e); }
+}
+
+// Descarga el nombre/fechas/costo del evento desde Sheets — así un
+// dispositivo nuevo (o uno al que se le borró el caché) no necesita que
+// alguien vuelva a teclear la configuración a mano.
+async function syncConfigFromServer() {
+  if (!config.scriptUrl) return false;
+  try {
+    const res = await fetch(config.scriptUrl + '?action=getConfig', { mode: 'cors' });
+    if (!res.ok) return false;
+    const data = await res.json();
+    if (data && (data.eventName || data.cost)) {
+      config.eventName = data.eventName || config.eventName || '';
+      config.dateStart = data.dateStart || config.dateStart || '';
+      config.dateEnd = data.dateEnd || config.dateEnd || '';
+      config.cost = parseFloat(data.cost) || config.cost || 0;
+      localStorage.setItem('rm_config', JSON.stringify(config));
+      return true;
+    }
+  } catch (e) { console.warn('No se pudo sincronizar configuración:', e); }
+  return false;
 }
 
 // ===== LOGIN =====
@@ -231,6 +276,22 @@ function showApp() {
   // vacía hasta que alguien presione "Actualizar lista" a mano.
   if (couples.length === 0 && config.scriptUrl) {
     downloadFromSheets();
+  }
+
+  // Igual para la configuración del evento (nombre, fechas, costo): sin
+  // esto, un dispositivo nuevo muestra "Sin evento configurado" y todo en
+  // $0.00 aunque las parejas y pagos ya se hayan descargado bien.
+  if (!config.eventName && config.scriptUrl) {
+    syncConfigFromServer().then(ok => {
+      if (!ok) return;
+      refreshDashboard();
+      if (isAdmin()) {
+        document.getElementById('cfg-event-name').value = config.eventName || '';
+        document.getElementById('cfg-date-start').value = config.dateStart || '';
+        document.getElementById('cfg-date-end').value = config.dateEnd || '';
+        document.getElementById('cfg-cost').value = config.cost || '';
+      }
+    });
   }
 }
 
@@ -1646,9 +1707,10 @@ async function fullSync() {
 
   try {
     // 0. Subir también la lista de usuarios de este dispositivo (con
-    // contraseña), para que cualquier otro dispositivo que abra el
-    // enlace pueda descargarla y usarla para iniciar sesión.
+    // contraseña) y la configuración del evento, para que cualquier otro
+    // dispositivo que abra el enlace las descargue automáticamente.
     if (users.length > 0) await pushUsersToServer();
+    await pushConfigToServer();
 
     // 1. SUBIR — enviar todas las parejas locales (upsert)
     for (const c of couples) {
