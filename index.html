@@ -354,11 +354,17 @@
           <div class="doc-upload-label">Acta</div>
           <div class="doc-status" id="status-acta">Sin cargar</div>
         </div>
-        <div class="doc-upload-item" onclick="triggerUpload('doc-id')">
-          <input type="file" id="doc-id" accept="image/*,.pdf" onchange="handleDocUpload('id',this)">
-          <div class="doc-upload-icon" id="icon-id">🪪</div>
-          <div class="doc-upload-label">Identificación</div>
-          <div class="doc-status" id="status-id">Sin cargar</div>
+        <div class="doc-upload-item" onclick="triggerUpload('doc-idHim')">
+          <input type="file" id="doc-idHim" accept="image/*,.pdf" onchange="handleDocUpload('idHim',this)">
+          <div class="doc-upload-icon" id="icon-idHim">🪪</div>
+          <div class="doc-upload-label">ID de Él</div>
+          <div class="doc-status" id="status-idHim">Sin cargar</div>
+        </div>
+        <div class="doc-upload-item" onclick="triggerUpload('doc-idHer')">
+          <input type="file" id="doc-idHer" accept="image/*,.pdf" onchange="handleDocUpload('idHer',this)">
+          <div class="doc-upload-icon" id="icon-idHer">🪪</div>
+          <div class="doc-upload-label">ID de Ella</div>
+          <div class="doc-status" id="status-idHer">Sin cargar</div>
         </div>
         <div class="doc-upload-item" onclick="triggerUpload('doc-photo')">
           <input type="file" id="doc-photo" accept="image/*" onchange="handleDocUpload('photo',this)">

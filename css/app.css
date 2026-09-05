@@ -144,7 +144,7 @@ a { cursor: pointer; text-decoration: none; }
 .filter-btn.active { background: #7C2D3E; color: #fff; border-color: #7C2D3E; }
 
 /* ===== DOCS UPLOAD ===== */
-.docs-upload-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.docs-upload-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
 .doc-upload-item { background: #FAFAFA; border: 1.5px dashed #D0C8C4; border-radius: 12px; padding: 14px 8px; text-align: center; cursor: pointer; transition: border-color 0.2s, background 0.2s; position: relative; }
 .doc-upload-item:hover { border-color: #7C2D3E; background: #FCEEF0; }
 .doc-upload-item.has-doc { border-style: solid; border-color: #1E7B3C; background: #EAF7EE; }
@@ -157,6 +157,7 @@ a { cursor: pointer; text-decoration: none; }
 .doc-drop-zone:hover { border-color: #7C2D3E; background: #FCEEF0; }
 .btn-doc-action { border: none; border-radius: 6px; padding: 3px 8px; font-size: 12px; cursor: pointer; font-family: inherit; }
 .btn-view { background: #EAF1FB; color: #1B5FA8; }
+.btn-download { background: #EAF7EE; color: #1E7B3C; }
 .btn-upload { background: #F0E8E5; color: #7C2D3E; }
 .btn-replace { background: #F5F5F5; color: #888; }
 

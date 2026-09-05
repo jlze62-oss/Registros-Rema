@@ -353,8 +353,8 @@ function getPayStatus(c) {
 }
 function getDocsStatus(c) {
   const d = c.docs || {};
-  const done = [d.acta, d.id, d.photo].filter(Boolean).length;
-  return { done, total: 3, complete: done === 3 };
+  const done = [d.acta, d.idHim, d.idHer, d.photo].filter(Boolean).length;
+  return { done, total: 4, complete: done === 4 };
 }
 function esc(str) {
   if (!str) return '';
@@ -426,7 +426,7 @@ function coupleItemHTML(c) {
   const [bClass, bText] = badgeMap[status];
   const docBadge = docsStatus.complete
     ? '<span class="badge badge-docs-ok" style="margin-left:4px">Docs ✓</span>'
-    : '<span class="badge badge-docs-pend" style="margin-left:4px">Docs ' + docsStatus.done + '/3</span>';
+    : '<span class="badge badge-docs-pend" style="margin-left:4px">Docs ' + docsStatus.done + '/4</span>';
   const becaBadge = c.beca ? '<span class="badge badge-becada" style="margin-left:4px">🎓</span>' : '';
   const penBadge = c.penalizacion ? '<span class="badge badge-penalizada" style="margin-left:4px">⚠️</span>' : '';
   const cancelBadge = c.cancelacion ? '<span class="badge badge-cancelada" style="margin-left:4px">❌ ' + (c.cancelacion.type === 'credito' ? 'Crédito' : 'Cancelada') + '</span>' : '';
@@ -501,7 +501,7 @@ function renderDocuments() {
   el.innerHTML = sorted.map(c => {
     const d = c.docs || {};
     const docsStatus = getDocsStatus(c);
-    const items = [{ key:'acta', icon:'📋', label:'Acta' }, { key:'id', icon:'🪪', label:'ID' }, { key:'photo', icon:'📷', label:'Foto' }];
+    const items = [{ key:'acta', icon:'📋', label:'Acta' }, { key:'idHim', icon:'🪪', label:'ID Él' }, { key:'idHer', icon:'🪪', label:'ID Ella' }, { key:'photo', icon:'📷', label:'Foto' }];
     const docIcons = items.map(i =>
       '<div style="text-align:center;opacity:' + (d[i.key] ? 1 : 0.2) + '">' +
         '<div style="font-size:20px">' + i.icon + '</div>' +
@@ -510,7 +510,7 @@ function renderDocuments() {
     ).join('');
     return '<div class="couple-item" onclick="openDetail(\'' + c.id + '\')">' +
       '<div class="couple-avatar" style="font-size:13px;background:' + (docsStatus.complete ? '#EAF7EE' : '#FFF4E5') + '">' +
-        '<span style="color:' + (docsStatus.complete ? '#1E7B3C' : '#B06000') + '">' + docsStatus.done + '/3</span>' +
+        '<span style="color:' + (docsStatus.complete ? '#1E7B3C' : '#B06000') + '">' + docsStatus.done + '/4</span>' +
       '</div>' +
       '<div class="couple-info">' +
         '<div class="couple-names">' + esc(c.him) + ' & ' + esc(c.her) + '</div>' +
@@ -573,9 +573,13 @@ function renderDetailModal(c) {
       }).join('') + '</div>';
 
   // Documentos con botones Ver / Subir
+  // La identificación va separada en dos (Él y Ella) porque siempre son
+  // dos documentos distintos. Solo "Foto juntos" tiene botón de Descargar
+  // — acta e identificaciones solo necesitan verse dentro de la app.
   const docItems = [
     { key: 'acta', label: 'Acta de matrimonio', icon: '📋' },
-    { key: 'id', label: 'Identificación', icon: '🪪' },
+    { key: 'idHim', label: 'Identificación de Él', icon: '🪪' },
+    { key: 'idHer', label: 'Identificación de Ella', icon: '🪪' },
     { key: 'photo', label: 'Foto juntos', icon: '📷' },
   ];
   const docRows = docItems.map(item => {
@@ -586,6 +590,7 @@ function renderDetailModal(c) {
       '<div style="display:flex;align-items:center;gap:6px;">' +
         '<span style="font-size:12px;color:' + (has ? '#1E7B3C' : '#B06000') + '">' + (has ? '✓ Cargado' : '⏳ Pendiente') + '</span>' +
         (has && canSee ? '<button onclick="viewDoc(\'' + c.id + '\',\'' + item.key + '\')" class="btn-doc-action btn-view">Ver</button>' : '') +
+        (has && canSee && item.key === 'photo' ? '<button onclick="downloadDoc(\'' + c.id + '\',\'' + item.key + '\')" class="btn-doc-action btn-download">⬇ Descargar</button>' : '') +
         (canSee && has ? '<button onclick="openDocUpload(\'' + c.id + '\',\'' + item.key + '\')" class="btn-doc-action btn-replace">Reemplazar</button>' : '') +
         (!has ? '<button onclick="openDocUpload(\'' + c.id + '\',\'' + item.key + '\')" class="btn-doc-action btn-upload">+ Subir</button>' : '') +
       '</div>' +
@@ -633,7 +638,7 @@ function renderDetailModal(c) {
     '<div class="section-label mt16">Historial de abonos</div>' +
     paymentsHTML +
 
-    '<div class="section-label mt16">Documentos (' + docsStatus.done + '/3)</div>' +
+    '<div class="section-label mt16">Documentos (' + docsStatus.done + '/4)</div>' +
     docRows +
     '<div style="margin-top:10px">' + logHTML + '</div>' +
 
@@ -681,6 +686,44 @@ function viewDoc(coupleId, docKey) {
   }
 }
 
+// ===== DESCARGAR DOCUMENTO INDIVIDUAL =====
+// Los documentos (acta, identificación, foto) solo viven como base64 en
+// este dispositivo — nunca se suben a Sheets — así que la única forma de
+// sacarlos de la app es descargándolos aquí. Genera el archivo con el
+// nombre de la pareja para que sea fácil identificarlo al subirlo después
+// a otro sistema (por ejemplo, la app de historial en Excel).
+function downloadDoc(coupleId, docKey) {
+  const c = couples.find(x => x.id === coupleId);
+  if (!c || !c.docs || !c.docs[docKey]) return;
+  const doc = c.docs[docKey];
+  if (!doc.data) return;
+
+  const labelMap = { acta: 'acta_matrimonio', idHim: 'identificacion_el', idHer: 'identificacion_ella', photo: 'foto_juntos' };
+  const safeName = ((c.him || '') + '_' + (c.her || ''))
+    .trim().replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '') || c.id;
+
+  // Intenta conservar la extensión original; si no hay nombre guardado,
+  // la deduce del tipo de dato (data:image/jpeg;base64,... etc.)
+  let ext = '';
+  if (doc.name && doc.name.includes('.')) {
+    ext = doc.name.split('.').pop().toLowerCase();
+  } else {
+    const mimeMatch = doc.data.match(/^data:([^;]+);/);
+    const mime = mimeMatch ? mimeMatch[1] : '';
+    ext = mime === 'image/png' ? 'png'
+      : mime === 'application/pdf' ? 'pdf'
+      : mime.startsWith('image/') ? mime.split('/')[1]
+      : 'jpg';
+  }
+
+  const a = document.createElement('a');
+  a.href = doc.data;
+  a.download = safeName + '_' + (labelMap[docKey] || docKey) + '.' + ext;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
 // ===== SUBIR DOCUMENTO INDIVIDUAL =====
 let uploadingDocKey = null;
 let uploadingCoupleId = null;
@@ -688,7 +731,7 @@ let uploadingCoupleId = null;
 function openDocUpload(coupleId, docKey) {
   uploadingDocKey = docKey;
   uploadingCoupleId = coupleId;
-  const labels = { acta: '📋 Acta de matrimonio', id: '🪪 Identificación', photo: '📷 Foto juntos' };
+  const labels = { acta: '📋 Acta de matrimonio', idHim: '🪪 Identificación de Él', idHer: '🪪 Identificación de Ella', photo: '📷 Foto juntos' };
   document.getElementById('doc-upload-label-text').textContent = labels[docKey];
   document.getElementById('single-doc-file').value = '';
   const preview = document.getElementById('single-doc-preview');
@@ -727,7 +770,7 @@ function saveSingleDoc() {
   if (!couples[idx].docs) couples[idx].docs = {};
   couples[idx].docs[uploadingDocKey] = { name: preview.dataset.name, data: preview.dataset.data };
   if (!couples[idx].docLog) couples[idx].docLog = [];
-  const docNames = { acta: 'acta de matrimonio', id: 'identificación', photo: 'foto juntos' };
+  const docNames = { acta: 'acta de matrimonio', idHim: 'identificación de él', idHer: 'identificación de ella', photo: 'foto juntos' };
   couples[idx].docLog.push({ ts: new Date().toISOString().split('T')[0], user: currentUser.name, doc: docNames[uploadingDocKey] });
   saveToStorage();
   closeModal('modal-doc-upload');
@@ -1349,14 +1392,14 @@ function deletePayment(coupleId, paymentId) {
 // ===== NUEVA / EDITAR PAREJA =====
 function openNewCoupleModal(coupleIdToEdit) {
   editingCoupleId = coupleIdToEdit || null;
-  docData = { acta: null, id: null, photo: null };
+  docData = { acta: null, idHim: null, idHer: null, photo: null };
   ['cp-him','cp-her','cp-tel-him','cp-tel-her','cp-email-him','cp-email-her','cp-amount','cp-received-by','cp-comments'].forEach(f => {
     const el = document.getElementById(f);
     if (el) el.value = '';
   });
   const methodEl = document.getElementById('cp-method');
   if (methodEl) methodEl.value = 'efectivo';
-  ['acta','id','photo'].forEach(k => {
+  ['acta','idHim','idHer','photo'].forEach(k => {
     document.getElementById('status-' + k).textContent = 'Sin cargar';
     document.getElementById('status-' + k).classList.remove('loaded');
     document.getElementById('icon-' + k).style.opacity = '1';
@@ -1382,7 +1425,7 @@ function openNewCoupleModal(coupleIdToEdit) {
       document.getElementById('cp-reg-date').value = c.regDate || '';
       document.getElementById('pay-section').style.display = 'none';
       if (c.docs) {
-        ['acta','id','photo'].forEach(k => {
+        ['acta','idHim','idHer','photo'].forEach(k => {
           if (c.docs[k]) {
             document.getElementById('status-' + k).textContent = 'Cargado ✓';
             document.getElementById('status-' + k).classList.add('loaded');
@@ -1439,9 +1482,9 @@ function saveCouple() {
     const idx = couples.findIndex(c => c.id === editingCoupleId);
     couple = { ...couples[idx] };
     const docLog = couple.docLog || [];
-    ['acta','id','photo'].forEach(k => {
+    ['acta','idHim','idHer','photo'].forEach(k => {
       if (docData[k] && docData[k].data && (!couple.docs || !couple.docs[k])) {
-        docLog.push({ ts: nowDisplay, user: currentUser.name, doc: { acta:'acta de matrimonio', id:'identificación', photo:'foto juntos' }[k] });
+        docLog.push({ ts: nowDisplay, user: currentUser.name, doc: { acta:'acta de matrimonio', idHim:'identificación de él', idHer:'identificación de ella', photo:'foto juntos' }[k] });
       }
     });
     couple.docLog = docLog;
@@ -1453,12 +1496,12 @@ function saveCouple() {
     couple.comments = document.getElementById('cp-comments').value.trim();
     couple.regDate = document.getElementById('cp-reg-date').value;
     if (!couple.docs) couple.docs = {};
-    ['acta','id','photo'].forEach(k => { if (docData[k] && docData[k].data) couple.docs[k] = docData[k]; });
+    ['acta','idHim','idHer','photo'].forEach(k => { if (docData[k] && docData[k].data) couple.docs[k] = docData[k]; });
     couples[idx] = couple;
   } else {
     const docLog = [];
-    ['acta','id','photo'].forEach(k => {
-      if (docData[k] && docData[k].data) docLog.push({ ts: nowDisplay, user: currentUser.name, doc: { acta:'acta de matrimonio', id:'identificación', photo:'foto juntos' }[k] });
+    ['acta','idHim','idHer','photo'].forEach(k => {
+      if (docData[k] && docData[k].data) docLog.push({ ts: nowDisplay, user: currentUser.name, doc: { acta:'acta de matrimonio', idHim:'identificación de él', idHer:'identificación de ella', photo:'foto juntos' }[k] });
     });
     const initialAmount = parseFloat(document.getElementById('cp-amount').value) || 0;
     const initialReceiver = document.getElementById('cp-received-by').value.trim();
@@ -1488,7 +1531,7 @@ function saveCouple() {
       comments: document.getElementById('cp-comments').value.trim(),
       regDate: document.getElementById('cp-reg-date').value,
       eventDate: document.getElementById('cp-event-date').value,
-      docs: { acta: docData.acta, id: docData.id, photo: docData.photo },
+      docs: { acta: docData.acta, idHim: docData.idHim, idHer: docData.idHer, photo: docData.photo },
       docLog, createdBy: currentUser.name, createdAt: now,
     };
     if (couple.payments.length > 0) couple.payments[0].coupleId = couple.id;
@@ -1651,7 +1694,7 @@ async function autoSyncCouple(couple, opts) {
           comments: couple.comments || '',
           regDate: couple.regDate || '', eventDate: couple.eventDate || '',
           docsActa: couple.docs && couple.docs.acta ? 'Sí' : 'No',
-          docsId:   couple.docs && couple.docs.id   ? 'Sí' : 'No',
+          docsId:   couple.docs && couple.docs.idHim && couple.docs.idHer ? 'Sí' : 'No',
           docsPhoto:couple.docs && couple.docs.photo ? 'Sí' : 'No',
           createdBy: couple.createdBy || '', createdAt: couple.createdAt || '',
           beca: couple.beca ? { amount: couple.beca.amount, reason: couple.beca.reason || '' } : null,
@@ -1895,7 +1938,7 @@ async function syncToSheets(couple) {
           amount: getTotalPaid(couple),
           comments: couple.comments, regDate: couple.regDate, eventDate: couple.eventDate,
           docsActa: couple.docs && couple.docs.acta ? 'Sí' : 'No',
-          docsId: couple.docs && couple.docs.id ? 'Sí' : 'No',
+          docsId: couple.docs && couple.docs.idHim && couple.docs.idHer ? 'Sí' : 'No',
           docsPhoto: couple.docs && couple.docs.photo ? 'Sí' : 'No',
           createdBy: couple.createdBy, createdAt: couple.createdAt,
         }
