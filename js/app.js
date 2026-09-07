@@ -48,6 +48,7 @@ function loadFromStorage() {
     config.scriptUrl = DEFAULT_SCRIPT_URL;
     localStorage.setItem('rm_config', JSON.stringify(config));
   }
+  if (!Array.isArray(config.paymentMethods)) config.paymentMethods = [];
   users = JSON.parse(localStorage.getItem('rm_users') || '[]');
   couples = JSON.parse(localStorage.getItem('rm_couples') || '[]');
   pendingSync = new Set(JSON.parse(localStorage.getItem('rm_pending') || '[]'));
@@ -151,6 +152,7 @@ async function pushConfigToServer() {
           dateStart: config.dateStart || '',
           dateEnd: config.dateEnd || '',
           cost: config.cost || 0,
+          paymentMethods: JSON.stringify(config.paymentMethods || []),
         }
       })
     });
@@ -171,11 +173,148 @@ async function syncConfigFromServer() {
       config.dateStart = data.dateStart || config.dateStart || '';
       config.dateEnd = data.dateEnd || config.dateEnd || '';
       config.cost = parseFloat(data.cost) || config.cost || 0;
+      if (data.paymentMethods) {
+        try {
+          const parsed = JSON.parse(data.paymentMethods);
+          if (Array.isArray(parsed)) config.paymentMethods = parsed;
+        } catch (e) { /* valor viejo o inválido, se ignora */ }
+      }
       localStorage.setItem('rm_config', JSON.stringify(config));
+      populateMethodSelects();
       return true;
     }
   } catch (e) { console.warn('No se pudo sincronizar configuración:', e); }
   return false;
+}
+
+// ===== MODOS DE PAGO CONFIGURABLES =====
+// Efectivo y Transferencia siempre existen (hardcoded). Aquí se administran
+// modos adicionales (Oficina, Depósito, Cheque, etc.) que el Admin agrega
+// desde Configuración. Se guardan en config.paymentMethods y se sincronizan
+// a Sheets igual que el resto de la configuración del evento.
+function getMethodMeta(key) {
+  const builtIn = {
+    efectivo: { label: 'Efectivo', icon: '💵' },
+    transferencia: { label: 'Transferencia', icon: '🏦' },
+    beca: { label: 'Beca REMA', icon: '🎓' },
+    penalizacion: { label: 'Penalización', icon: '⚠️' },
+    cancelacion: { label: 'Cancelación', icon: '❌' },
+  };
+  if (builtIn[key]) return builtIn[key];
+  const custom = (config.paymentMethods || []).find(m => m.key === key);
+  if (custom) return { label: custom.label, icon: custom.icon || '💳' };
+  return builtIn.efectivo; // pagos viejos sin "method" se contaban como efectivo
+}
+
+function slugifyMethod(str) {
+  return String(str).toLowerCase().trim()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
+
+// Agrega las opciones de modos de pago personalizados a los 3 <select>
+// donde se elige el modo (nuevo abono, editar abono, primer abono al
+// registrar pareja). Quita las que había agregado antes para no duplicar.
+function populateMethodSelects() {
+  ['pay-method', 'edit-pay-method', 'cp-method'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    sel.querySelectorAll('option[data-custom]').forEach(o => o.remove());
+    (config.paymentMethods || []).forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.key;
+      opt.textContent = (m.icon || '💳') + ' ' + m.label;
+      opt.setAttribute('data-custom', '1');
+      sel.appendChild(opt);
+    });
+  });
+}
+
+function renderPaymentMethodsList() {
+  const el = document.getElementById('payment-methods-list');
+  if (!el) return;
+  const methods = config.paymentMethods || [];
+  el.innerHTML = methods.length === 0
+    ? '<div style="color:#aaa;font-size:13px;padding:4px 0;">Aún no has agregado modos de pago adicionales.</div>'
+    : methods.map(m =>
+        '<div class="detail-row"><span class="detail-lbl">' + m.icon + ' ' + esc(m.label) + '</span>' +
+          '<button onclick="removePaymentMethod(\'' + m.key + '\')" style="background:none;border:none;color:#C0392B;font-size:13px;cursor:pointer;">🗑 Quitar</button>' +
+        '</div>'
+      ).join('');
+}
+
+function addPaymentMethod() {
+  const labelEl = document.getElementById('new-method-label');
+  const iconEl = document.getElementById('new-method-icon');
+  const label = labelEl.value.trim();
+  if (!label) { showToast('Escribe un nombre para el modo de pago', 'error'); return; }
+  const key = slugifyMethod(label);
+  const reserved = ['efectivo', 'transferencia', 'beca', 'penalizacion', 'cancelacion'];
+  if (!config.paymentMethods) config.paymentMethods = [];
+  if (!key || reserved.includes(key) || config.paymentMethods.some(m => m.key === key)) {
+    showToast('Ese modo de pago ya existe', 'error'); return;
+  }
+  config.paymentMethods.push({ key, label, icon: iconEl.value.trim() || '💳' });
+  localStorage.setItem('rm_config', JSON.stringify(config));
+  labelEl.value = ''; iconEl.value = '';
+  renderPaymentMethodsList();
+  populateMethodSelects();
+  pushConfigToServer();
+  showToast('Modo de pago agregado ✓', 'success');
+}
+
+function removePaymentMethod(key) {
+  if (!confirm('¿Quitar este modo de pago? Los abonos ya registrados con este modo conservan su historial, pero ya no podrás elegirlo para nuevos abonos.')) return;
+  config.paymentMethods = (config.paymentMethods || []).filter(m => m.key !== key);
+  localStorage.setItem('rm_config', JSON.stringify(config));
+  renderPaymentMethodsList();
+  populateMethodSelects();
+  pushConfigToServer();
+  showToast('Modo de pago eliminado', '');
+}
+
+// Orden en el que se muestran los modos en el resumen del Inicio
+function methodDisplayOrder() {
+  const custom = (config.paymentMethods || []).map(m => m.key);
+  return ['efectivo', 'transferencia', ...custom, 'penalizacion', 'beca', 'cancelacion'];
+}
+
+// Tabla "Resumen por modo de pago" del Inicio — solo Admin / Reg. Principal
+// (ver .finance-restricted en showApp()). Cuenta y suma TODOS los abonos
+// (incluye becas y penalizaciones, que se ven como montos negativos, igual
+// que en el detalle de cada pareja).
+function renderPaymentBreakdown() {
+  const el = document.getElementById('payment-breakdown-body');
+  if (!el) return;
+  const totals = {};
+  couples.forEach(c => {
+    (c.payments || []).forEach(p => {
+      const key = p.method || 'efectivo';
+      if (!totals[key]) totals[key] = { count: 0, sum: 0 };
+      totals[key].count++;
+      totals[key].sum += (p.amount || 0);
+    });
+  });
+  const order = methodDisplayOrder();
+  const keys = Object.keys(totals).sort((a, b) => {
+    const ia = order.indexOf(a), ib = order.indexOf(b);
+    return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+  });
+  const totalEl = document.getElementById('payment-breakdown-total');
+  if (keys.length === 0) {
+    el.innerHTML = '<div style="color:#aaa;font-size:13px;padding:8px 0;">Sin abonos registrados aún.</div>';
+    if (totalEl) totalEl.textContent = '$0.00';
+    return;
+  }
+  let grandTotal = 0;
+  el.innerHTML = keys.map(key => {
+    const meta = getMethodMeta(key);
+    const t = totals[key];
+    grandTotal += t.sum;
+    return '<div class="detail-row"><span class="detail-lbl">' + meta.icon + ' ' + esc(meta.label) + ' (' + t.count + ')</span>' +
+      '<span class="detail-val" style="color:' + (t.sum < 0 ? '#C0392B' : '#1A1A1A') + '">' + (t.sum < 0 ? '−' : '') + '$' + fmtMoney(Math.abs(t.sum)) + '</span></div>';
+  }).join('');
+  if (totalEl) totalEl.textContent = '$' + fmtMoney(grandTotal);
 }
 
 // ===== LOGIN =====
@@ -262,7 +401,11 @@ function showApp() {
     document.getElementById('cfg-cost').value = config.cost || '';
     document.getElementById('cfg-sheet-id').value = config.sheetId || '';
     document.getElementById('cfg-script-url').value = config.scriptUrl || '';
+    renderPaymentMethodsList();
   }
+
+  // Los modos de pago adicionales aplican para cualquier rol que registre abonos
+  populateMethodSelects();
 
   showView('dashboard');
 
@@ -328,6 +471,7 @@ function showView(view) {
   if (view === 'couples') renderCouples();
   if (view === 'payments') renderPayments();
   if (view === 'documents') renderDocuments();
+  if (view === 'config') renderPaymentMethodsList();
   if (view === 'users') renderUsers();
   if (view === 'becas') renderBecas();
 }
@@ -412,6 +556,7 @@ function refreshDashboard() {
   document.getElementById('total-pending').textContent = '$' + fmtMoney(totalPending);
   document.getElementById('progress-fill').style.width = Math.min(pct, 100) + '%';
   document.getElementById('pct-badge').textContent = pct + '%';
+  renderPaymentBreakdown();
   const recent = [...couples].sort((a, b) => new Date(b.createdAt||b.regDate) - new Date(a.createdAt||a.regDate)).slice(0, 5);
   document.getElementById('recent-list').innerHTML = recent.length === 0
     ? '<p style="color:#888;font-size:13px;padding:8px 0;">No hay registros aún.</p>'
@@ -479,8 +624,9 @@ function renderPayments() {
   if (allPayments.length === 0) { el.innerHTML = '<p style="color:#888;font-size:13px;padding:8px 0;">No hay abonos registrados aún.</p>'; return; }
   allPayments.sort((a, b) => new Date(b.date) - new Date(a.date));
   el.innerHTML = allPayments.map(p => {
-    const icon = p.method === 'transferencia' ? '🏦' : '💵';
-    const methodLabel = p.method === 'transferencia' ? 'Transferencia' : 'Efectivo';
+    const meta = getMethodMeta(p.method);
+    const icon = meta.icon;
+    const methodLabel = meta.label;
     return '<div class="couple-item" onclick="openDetail(\'' + p.coupleId + '\')">' +
       '<div class="couple-avatar" style="font-size:20px">' + icon + '</div>' +
       '<div class="couple-info">' +
@@ -544,8 +690,16 @@ function renderDetailModal(c) {
   const pending = Math.max(0, cost - totalPaid);
   const docsStatus = getDocsStatus(c);
   const d = c.docs || {};
-  const efectivo = payments.filter(p => p.method !== 'transferencia').reduce((s, p) => s + p.amount, 0);
-  const transf = payments.filter(p => p.method === 'transferencia').reduce((s, p) => s + p.amount, 0);
+  // Desglose por modo de pago (la Beca se muestra aparte, en su propia sección)
+  const methodTotals = {};
+  payments.filter(p => p.method !== 'beca').forEach(p => {
+    const key = p.method || 'efectivo';
+    methodTotals[key] = (methodTotals[key] || 0) + p.amount;
+  });
+  const methodRowsHTML = Object.keys(methodTotals).map(key => {
+    const meta = getMethodMeta(key);
+    return '<div class="detail-row"><span class="detail-lbl">' + meta.icon + ' ' + esc(meta.label) + '</span><span class="detail-val">$' + fmtMoney(methodTotals[key]) + '</span></div>';
+  }).join('');
 
   // Historial de pagos
   let paymentsHTML = payments.length === 0
@@ -555,7 +709,7 @@ function renderDetailModal(c) {
         const isNeg = p.amount < 0;
         const isPen = p.method === 'penalizacion';
         const isBeca = p.method === 'beca';
-        const icon = isPen ? '⚠️' : isBeca ? '🎓' : p.method === 'transferencia' ? '🏦' : '💵';
+        const icon = getMethodMeta(p.method).icon;
         const isAdmin = currentUser && currentUser.role === 'admin';
         return '<div class="payment-item">' +
           '<div class="payment-dot ' + (i === 0 ? 'first' : '') + '" style="background:' + (isPen ? '#B06000' : isBeca ? '#1E7B3C' : '#1E7B3C') + '"></div>' +
@@ -567,7 +721,7 @@ function renderDetailModal(c) {
                 (isAdmin ? '<button onclick="deletePayment(\'' + c.id + '\',\'' + p.id + '\')" style="background:none;border:none;color:#ddd;font-size:16px;cursor:pointer;padding:0 0 0 4px;">✕</button>' : '') +
               '</div>' +
             '</div>' +
-            '<div class="payment-meta">' + formatDate(p.date) + ' · ' + esc(p.receivedBy || '—') + ' · ' + (isPen ? 'Penalización' : isBeca ? 'Beca REMA' : p.method === 'transferencia' ? 'Transferencia' : 'Efectivo') + '</div>' +
+            '<div class="payment-meta">' + formatDate(p.date) + ' · ' + esc(p.receivedBy || '—') + ' · ' + getMethodMeta(p.method).label + '</div>' +
             (p.note ? '<div class="payment-note">"' + esc(p.note) + '"</div>' : '') +
             '<div class="payment-acum" style="color:' + (acum < 0 ? '#C0392B' : '#1E7B3C') + '">Acumulado hasta aquí: $' + fmtMoney(acum) + '</div>' +
           '</div>' +
@@ -633,8 +787,7 @@ function renderDetailModal(c) {
     '<div class="detail-row"><span class="detail-lbl">Costo total</span><span class="detail-val">$' + fmtMoney(cost) + '</span></div>' +
     '<div class="detail-row"><span class="detail-lbl">Total pagado</span><span class="detail-val" style="color:#1E7B3C;font-weight:600">$' + fmtMoney(totalPaid) + '</span></div>' +
     '<div class="detail-row"><span class="detail-lbl">Pendiente</span><span class="detail-val" style="color:' + (pending > 0 ? '#B06000' : '#1E7B3C') + ';font-weight:600">' + (pending > 0 ? '$' + fmtMoney(pending) : '✓ Liquidado') + '</span></div>' +
-    (efectivo > 0 ? '<div class="detail-row"><span class="detail-lbl">💵 Efectivo</span><span class="detail-val">$' + fmtMoney(efectivo) + '</span></div>' : '') +
-    (transf > 0 ? '<div class="detail-row"><span class="detail-lbl">🏦 Transferencia</span><span class="detail-val">$' + fmtMoney(transf) + '</span></div>' : '') +
+    methodRowsHTML +
     '<div class="detail-row"><span class="detail-lbl">No. abonos</span><span class="detail-val">' + payments.length + '</span></div>' +
 
     '<div class="section-label mt16">Historial de abonos</div>' +
