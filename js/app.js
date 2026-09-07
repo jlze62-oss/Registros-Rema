@@ -244,6 +244,8 @@ function showApp() {
 
   // Mostrar/ocultar elementos según rol
   document.querySelectorAll('.admin-only').forEach(el => el.classList.toggle('hidden', !admin));
+  // El resumen financiero (total recaudado / saldo pendiente) solo lo ven admin y registrador principal
+  document.querySelectorAll('.finance-restricted').forEach(el => el.classList.toggle('hidden', !regPrincipal));
 
   // Nombre y rol en sidebar
   document.getElementById('nav-avatar').textContent = (currentUser.name || 'U').charAt(0).toUpperCase();
