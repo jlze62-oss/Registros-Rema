@@ -97,7 +97,7 @@
         <div class="stat-card"><div class="stat-icon rose">♡</div><div class="stat-val" id="stat-couples">—</div><div class="stat-lbl">Parejas</div></div>
         <div class="stat-card"><div class="stat-icon green">✓</div><div class="stat-val" id="stat-paid">—</div><div class="stat-lbl">Pagos completos</div></div>
         <div class="stat-card"><div class="stat-icon blue">⬜</div><div class="stat-val" id="stat-docs">—</div><div class="stat-lbl">Docs completos</div></div>
-        <div class="stat-card"><div class="stat-icon amber">!</div><div class="stat-val" id="stat-pending">—</div><div class="stat-lbl">Pago pendiente</div></div>
+        <div class="stat-card"><div class="stat-icon green">✅</div><div class="stat-val" id="stat-pending">—</div><div class="stat-lbl">Confirmados</div></div>
       </div>
       <div class="card mt16 finance-restricted">
         <div class="card-header"><span class="card-title">Resumen financiero</span><span class="pct-badge" id="pct-badge">0%</span></div>
@@ -115,6 +115,10 @@
           <span class="detail-val" id="payment-breakdown-total" style="font-weight:700;font-size:15px">$0.00</span>
         </div>
       </div>
+      <div class="card mt16 finance-restricted">
+        <div class="card-header"><span class="card-title">Resumen por estatus</span></div>
+        <div id="status-breakdown-body" class="mt8"></div>
+      </div>
       <div class="card mt16">
         <div class="card-header"><span class="card-title">Registros recientes</span></div>
         <div id="recent-list" class="couple-list"></div>
@@ -128,7 +132,7 @@
         <button class="filter-btn active" onclick="setFilter('all',this)">Todos</button>
         <button class="filter-btn" onclick="setFilter('paid',this)">Pagado</button>
         <button class="filter-btn" onclick="setFilter('partial',this)">Parcial</button>
-        <button class="filter-btn" onclick="setFilter('nopay',this)">Sin pago</button>
+        <button class="filter-btn" onclick="setFilter('confirmados',this)">Confirmados</button>
       </div>
       <div id="couples-list" class="couple-list"></div>
       <div id="couples-empty" class="empty-state hidden">
@@ -201,6 +205,22 @@
           </div>
         </div>
         <button class="btn-outline full" onclick="addPaymentMethod()">+ Agregar modo de pago</button>
+      </div>
+      <div class="card mt16">
+        <div class="card-header"><span class="card-title">Estatus de parejas</span></div>
+        <small class="form-hint">"Confirmados" es fijo. Agrega, o quita, los demás conceptos que necesites (Pendientes, Cancelaron, Al Siguiente, En Espera y los que tú definas).</small>
+        <div id="couple-statuses-list" class="mt16"></div>
+        <div class="form-row-2 mt16">
+          <div class="form-group">
+            <label>Ícono (opcional)</label>
+            <input type="text" id="new-status-icon" placeholder="🏷" maxlength="2">
+          </div>
+          <div class="form-group">
+            <label>Nombre del estatus</label>
+            <input type="text" id="new-status-label" placeholder="Ej: VIP">
+          </div>
+        </div>
+        <button class="btn-outline full" onclick="addCoupleStatus()">+ Agregar estatus</button>
       </div>
       <div class="card mt16">
         <div class="card-header"><span class="card-title">Conexión Google Sheets</span></div>

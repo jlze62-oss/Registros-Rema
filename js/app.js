@@ -49,6 +49,18 @@ function loadFromStorage() {
     localStorage.setItem('rm_config', JSON.stringify(config));
   }
   if (!Array.isArray(config.paymentMethods)) config.paymentMethods = [];
+  // "Confirmados" es fijo (no se puede borrar/renombrar) porque el Inicio
+  // siempre cuenta cuántas parejas tienen exactamente ese estatus.
+  if (!Array.isArray(config.coupleStatuses) || config.coupleStatuses.length === 0) {
+    config.coupleStatuses = [
+      { key: 'confirmados', label: 'Confirmados', icon: '✅' },
+      { key: 'pendientes', label: 'Pendientes', icon: '⏳' },
+      { key: 'cancelaron', label: 'Cancelaron', icon: '❌' },
+      { key: 'al_siguiente', label: 'Al Siguiente', icon: '➡️' },
+      { key: 'en_espera', label: 'En Espera', icon: '🕓' },
+    ];
+    localStorage.setItem('rm_config', JSON.stringify(config));
+  }
   users = JSON.parse(localStorage.getItem('rm_users') || '[]');
   couples = JSON.parse(localStorage.getItem('rm_couples') || '[]');
   pendingSync = new Set(JSON.parse(localStorage.getItem('rm_pending') || '[]'));
@@ -78,6 +90,9 @@ function loadFromStorage() {
     if (couples[i].payments && couples[i].payments.length > 0) {
       couples[i].amount = couples[i].payments.reduce((s, p) => s + (p.amount || 0), 0);
     }
+    // Parejas de antes de este cambio: quedan como "Pendientes" hasta que
+    // Admin/Reg. Principal las reclasifiquen.
+    if (!couples[i].status) { couples[i].status = 'pendientes'; changed = true; }
   });
   if (changed) localStorage.setItem('rm_couples', JSON.stringify(couples));
 
@@ -153,6 +168,7 @@ async function pushConfigToServer() {
           dateEnd: config.dateEnd || '',
           cost: config.cost || 0,
           paymentMethods: JSON.stringify(config.paymentMethods || []),
+          coupleStatuses: JSON.stringify(config.coupleStatuses || []),
         }
       })
     });
@@ -179,8 +195,15 @@ async function syncConfigFromServer() {
           if (Array.isArray(parsed)) config.paymentMethods = parsed;
         } catch (e) { /* valor viejo o inválido, se ignora */ }
       }
+      if (data.coupleStatuses) {
+        try {
+          const parsedStatuses = JSON.parse(data.coupleStatuses);
+          if (Array.isArray(parsedStatuses) && parsedStatuses.length > 0) config.coupleStatuses = parsedStatuses;
+        } catch (e) { /* valor viejo o inválido, se ignora */ }
+      }
       localStorage.setItem('rm_config', JSON.stringify(config));
       populateMethodSelects();
+      renderCoupleStatusesList();
       return true;
     }
   } catch (e) { console.warn('No se pudo sincronizar configuración:', e); }
@@ -317,6 +340,99 @@ function renderPaymentBreakdown() {
   if (totalEl) totalEl.textContent = '$' + fmtMoney(grandTotal);
 }
 
+// ===== ESTATUS DE PAREJA (Confirmados/Pendientes/... configurables) =====
+// Solo Admin y Registrador Principal pueden asignar/cambiar el estatus de
+// una pareja (canSetCoupleStatus). Cualquier rol puede VERLO. "Confirmados"
+// es fijo — no se puede quitar ni renombrar — porque el Inicio siempre
+// muestra cuántas parejas tienen exactamente ese estatus.
+function canSetCoupleStatus() { return isRegPrincipal(); }
+
+function getStatusMeta(key) {
+  const found = (config.coupleStatuses || []).find(s => s.key === key);
+  if (found) return found;
+  return { key: 'pendientes', label: 'Pendientes', icon: '⏳' };
+}
+
+function renderCoupleStatusesList() {
+  const el = document.getElementById('couple-statuses-list');
+  if (!el) return;
+  const statuses = config.coupleStatuses || [];
+  el.innerHTML = statuses.map(s =>
+    '<div class="detail-row"><span class="detail-lbl">' + (s.icon || '🏷') + ' ' + esc(s.label) + '</span>' +
+      (s.key === 'confirmados'
+        ? '<span style="font-size:11px;color:#aaa;">fijo</span>'
+        : '<button onclick="removeCoupleStatus(\'' + s.key + '\')" style="background:none;border:none;color:#C0392B;font-size:13px;cursor:pointer;">🗑 Quitar</button>')
+    + '</div>'
+  ).join('');
+}
+
+function addCoupleStatus() {
+  const labelEl = document.getElementById('new-status-label');
+  const iconEl = document.getElementById('new-status-icon');
+  const label = labelEl.value.trim();
+  if (!label) { showToast('Escribe un nombre para el estatus', 'error'); return; }
+  const key = slugifyMethod(label);
+  if (!config.coupleStatuses) config.coupleStatuses = [];
+  if (!key || config.coupleStatuses.some(s => s.key === key)) {
+    showToast('Ese estatus ya existe', 'error'); return;
+  }
+  config.coupleStatuses.push({ key, label, icon: iconEl.value.trim() || '🏷' });
+  localStorage.setItem('rm_config', JSON.stringify(config));
+  labelEl.value = ''; iconEl.value = '';
+  renderCoupleStatusesList();
+  pushConfigToServer();
+  showToast('Estatus agregado ✓', 'success');
+}
+
+function removeCoupleStatus(key) {
+  if (key === 'confirmados') return; // protegido, nunca se debería llegar aquí
+  if (!confirm('¿Quitar este estatus? Las parejas que ya lo tengan asignado lo conservarán, pero ya no podrás seleccionarlo para otras.')) return;
+  config.coupleStatuses = (config.coupleStatuses || []).filter(s => s.key !== key);
+  localStorage.setItem('rm_config', JSON.stringify(config));
+  renderCoupleStatusesList();
+  pushConfigToServer();
+  showToast('Estatus eliminado', '');
+}
+
+// Cambia el estatus de la pareja abierta en el detalle (solo Admin/Reg. Principal)
+function updateCoupleStatus(coupleId, newStatus) {
+  if (!canSetCoupleStatus()) return;
+  const idx = couples.findIndex(c => c.id === coupleId);
+  if (idx === -1) return;
+  couples[idx].status = newStatus;
+  saveToStorage();
+  refreshDashboard();
+  renderCouples();
+  autoSyncCouple(couples[idx]);
+  showToast('Estatus actualizado ✓', 'success');
+}
+
+// Tabla "Resumen por estatus" del Inicio — solo Admin / Reg. Principal.
+function renderStatusBreakdown() {
+  const el = document.getElementById('status-breakdown-body');
+  if (!el) return;
+  const statuses = config.coupleStatuses || [];
+  const counts = {};
+  couples.forEach(c => {
+    const key = c.status || 'pendientes';
+    counts[key] = (counts[key] || 0) + 1;
+  });
+  const keys = Object.keys(counts).sort((a, b) => {
+    const ia = statuses.findIndex(s => s.key === a);
+    const ib = statuses.findIndex(s => s.key === b);
+    return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+  });
+  if (keys.length === 0) {
+    el.innerHTML = '<div style="color:#aaa;font-size:13px;padding:8px 0;">Sin parejas registradas aún.</div>';
+    return;
+  }
+  el.innerHTML = keys.map(key => {
+    const meta = getStatusMeta(key);
+    return '<div class="detail-row"><span class="detail-lbl">' + meta.icon + ' ' + esc(meta.label) + '</span>' +
+      '<span class="detail-val">' + counts[key] + '</span></div>';
+  }).join('');
+}
+
 // ===== LOGIN =====
 // Descarga la lista de usuarios (con contraseña) desde Sheets y, si trae
 // algo, reemplaza la lista local. Así un dispositivo que nunca ha entrado
@@ -402,6 +518,7 @@ function showApp() {
     document.getElementById('cfg-sheet-id').value = config.sheetId || '';
     document.getElementById('cfg-script-url').value = config.scriptUrl || '';
     renderPaymentMethodsList();
+    renderCoupleStatusesList();
   }
 
   // Los modos de pago adicionales aplican para cualquier rol que registre abonos
@@ -471,7 +588,7 @@ function showView(view) {
   if (view === 'couples') renderCouples();
   if (view === 'payments') renderPayments();
   if (view === 'documents') renderDocuments();
-  if (view === 'config') renderPaymentMethodsList();
+  if (view === 'config') { renderPaymentMethodsList(); renderCoupleStatusesList(); }
   if (view === 'users') renderUsers();
   if (view === 'becas') renderBecas();
 }
@@ -548,7 +665,7 @@ function refreshDashboard() {
   document.getElementById('stat-couples').textContent = couples.length;
   document.getElementById('stat-paid').textContent = couples.filter(c => getPayStatus(c) === 'paid').length;
   document.getElementById('stat-docs').textContent = couples.filter(c => getDocsStatus(c).complete).length;
-  document.getElementById('stat-pending').textContent = couples.filter(c => getPayStatus(c) !== 'paid').length;
+  document.getElementById('stat-pending').textContent = couples.filter(c => (c.status || 'pendientes') === 'confirmados').length;
   const totalCollected = couples.reduce((s, c) => s + getTotalPaid(c), 0);
   const totalPending = Math.max(0, couples.length * cost - totalCollected);
   const pct = couples.length > 0 && cost > 0 ? Math.round(totalCollected / (couples.length * cost) * 100) : 0;
@@ -557,6 +674,7 @@ function refreshDashboard() {
   document.getElementById('progress-fill').style.width = Math.min(pct, 100) + '%';
   document.getElementById('pct-badge').textContent = pct + '%';
   renderPaymentBreakdown();
+  renderStatusBreakdown();
   const recent = [...couples].sort((a, b) => new Date(b.createdAt||b.regDate) - new Date(a.createdAt||a.regDate)).slice(0, 5);
   document.getElementById('recent-list').innerHTML = recent.length === 0
     ? '<p style="color:#888;font-size:13px;padding:8px 0;">No hay registros aún.</p>'
@@ -577,11 +695,13 @@ function coupleItemHTML(c) {
   const becaBadge = c.beca ? '<span class="badge badge-becada" style="margin-left:4px">🎓</span>' : '';
   const penBadge = c.penalizacion ? '<span class="badge badge-penalizada" style="margin-left:4px">⚠️</span>' : '';
   const cancelBadge = c.cancelacion ? '<span class="badge badge-cancelada" style="margin-left:4px">❌ ' + (c.cancelacion.type === 'credito' ? 'Crédito' : 'Cancelada') + '</span>' : '';
+  const statusMeta = getStatusMeta(c.status || 'pendientes');
+  const statusBadge = '<span class="badge" style="margin-left:4px;background:#EFEAFB;color:#5B3E9E">' + statusMeta.icon + ' ' + esc(statusMeta.label) + '</span>';
   return '<div class="couple-item" onclick="openDetail(\'' + c.id + '\')">' +
     '<div class="couple-num">#' + num + '</div>' +
     '<div class="couple-info">' +
       '<div class="couple-names">' + esc(c.him) + ' & ' + esc(c.her) + '</div>' +
-      '<div class="couple-meta">' + formatDate(c.regDate) + docBadge + becaBadge + penBadge + cancelBadge + '</div>' +
+      '<div class="couple-meta">' + formatDate(c.regDate) + docBadge + becaBadge + penBadge + cancelBadge + statusBadge + '</div>' +
     '</div>' +
     '<div class="couple-right">' +
       '<div class="couple-amount">$' + fmtMoney(paid) + '</div>' +
@@ -597,7 +717,7 @@ function renderCouples() {
     const s = getPayStatus(c);
     if (currentFilter === 'paid') return s === 'paid';
     if (currentFilter === 'partial') return s === 'partial';
-    if (currentFilter === 'nopay') return s === 'nopay';
+    if (currentFilter === 'confirmados') return (c.status || 'pendientes') === 'confirmados';
     return true;
   });
   const el = document.getElementById('couples-list');
@@ -773,8 +893,21 @@ function renderDetailModal(c) {
   if (becaBtn) becaBtn.style.display = canEdit() ? '' : 'none';
   if (penBtn) penBtn.style.display = canEdit() ? '' : 'none';
 
+  // Estatus de la pareja (Confirmados/Pendientes/...) — cualquiera lo ve,
+  // pero solo Admin/Reg. Principal pueden cambiarlo (canSetCoupleStatus()).
+  const currentStatus = c.status || 'pendientes';
+  const statusMetaDetail = getStatusMeta(currentStatus);
+  const statusControlHTML = canSetCoupleStatus()
+    ? '<select onchange="updateCoupleStatus(\'' + c.id + '\', this.value)" style="width:100%;padding:9px 10px;border-radius:8px;border:1.5px solid #ddd;font-size:14px;background:#fff;">' +
+        (config.coupleStatuses || []).map(s =>
+          '<option value="' + s.key + '"' + (s.key === currentStatus ? ' selected' : '') + '>' + s.icon + ' ' + esc(s.label) + '</option>'
+        ).join('') +
+      '</select>'
+    : '<span class="badge" style="background:#EFEAFB;color:#5B3E9E;font-size:13px;padding:6px 12px;">' + statusMetaDetail.icon + ' ' + esc(statusMetaDetail.label) + '</span>';
+
   document.getElementById('detail-body').innerHTML =
-    '<div class="section-label">Participantes</div>' +
+    '<div class="section-label">Estatus</div>' + statusControlHTML +
+    '<div class="section-label mt16">Participantes</div>' +
     '<div class="detail-row"><span class="detail-lbl">No. consecutivo</span><span class="detail-val" style="font-size:16px;font-weight:700;color:#7C2D3E">#' + num + '</span></div>' +
     '<div class="detail-row"><span class="detail-lbl">Él</span><span class="detail-val">' + esc(c.him) + '</span></div>' +
     '<div class="detail-row"><span class="detail-lbl">Ella</span><span class="detail-val">' + esc(c.her) + '</span></div>' +
@@ -1688,6 +1821,7 @@ function saveCouple() {
       eventDate: document.getElementById('cp-event-date').value,
       docs: { acta: docData.acta, idHim: docData.idHim, idHer: docData.idHer, photo: docData.photo },
       docLog, createdBy: currentUser.name, createdAt: now,
+      status: 'pendientes',
     };
     if (couple.payments.length > 0) couple.payments[0].coupleId = couple.id;
     couples.unshift(couple);
@@ -1846,6 +1980,7 @@ async function autoSyncCouple(couple, opts) {
           telHim: couple.telHim || '', telHer: couple.telHer || '',
           emailHim: couple.emailHim || '', emailHer: couple.emailHer || '',
           amount: totalPaid, pending, payStatus,
+          status: couple.status || 'pendientes',
           comments: couple.comments || '',
           regDate: couple.regDate || '', eventDate: couple.eventDate || '',
           docsActa: couple.docs && couple.docs.acta ? 'Sí' : 'No',
@@ -1940,12 +2075,13 @@ async function fullSync() {
               emailHim: sc.emailHim || local.emailHim,
               emailHer: sc.emailHer || local.emailHer,
               comments: sc.comments || local.comments,
+              status: sc.status || local.status || 'pendientes',
               docs: local.docs || {},
               docLog: local.docLog || [],
               payments: mergePayments(local.payments, sc.payments),
             };
           } else {
-            localMap[sc.id] = { ...sc, docs: {}, docLog: [], payments: sc.payments || [] };
+            localMap[sc.id] = { ...sc, status: sc.status || 'pendientes', docs: {}, docLog: [], payments: sc.payments || [] };
             downloaded++;
           }
         });
@@ -2002,12 +2138,13 @@ async function downloadFromSheets() {
             telHim: sc.telHim || local.telHim,
             telHer: sc.telHer || local.telHer,
             comments: sc.comments || local.comments,
+            status: sc.status || local.status || 'pendientes',
             docs: local.docs || {},
             docLog: local.docLog || [],
             payments: mergePayments(local.payments, sc.payments),
           };
         } else {
-          localMap[sc.id] = { ...sc, docs: {}, docLog: [], payments: sc.payments || [] };
+          localMap[sc.id] = { ...sc, status: sc.status || 'pendientes', docs: {}, docLog: [], payments: sc.payments || [] };
           newCount++;
         }
       });
@@ -2177,6 +2314,7 @@ async function syncFromSheets(silent = false) {
               regDate: sc.regDate || local.regDate,
               eventDate: sc.eventDate || local.eventDate,
               comments: sc.comments || local.comments,
+              status: sc.status || local.status || 'pendientes',
               // Preservar siempre lo local
               docs: local.docs || {},
               docLog: local.docLog || [],
@@ -2190,6 +2328,7 @@ async function syncFromSheets(silent = false) {
           // Nueva pareja de Sheets — solo agregar si tiene nombres válidos
           localMap[sc.id] = {
             ...sc,
+            status: sc.status || 'pendientes',
             docs: {},
             docLog: [],
             payments: sc.payments || [],
