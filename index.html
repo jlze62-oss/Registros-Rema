@@ -32,9 +32,42 @@
       <div id="login-error" class="error-msg hidden">Usuario o contraseña incorrectos</div>
       <button class="btn-primary full" id="btn-login" onclick="doLogin()">Ingresar</button>
       <p class="login-hint">Contacta al administrador si no tienes acceso</p>
+      <div id="boot-status" class="hidden" style="margin-top:14px;font-size:13px;color:#8b7bb8;text-align:center;line-height:1.4;"></div>
     </div>
   </div>
 </div>
+
+<!-- Aviso de carga lenta / botón de reintento manual. Es un script
+     independiente de js/app.js a propósito: si app.js no llega a
+     descargarse (señal débil en datos móviles), este aviso igual
+     debe aparecer, porque no depende de que app.js haya cargado. -->
+<script>
+(function () {
+  var bootEl = document.getElementById('boot-status');
+  var slowTimer = setTimeout(function () {
+    if (window.appLoaded) return;
+    bootEl.classList.remove('hidden');
+    bootEl.textContent = 'Cargando… esto puede tardar unos segundos más en datos móviles.';
+  }, 4000);
+  var stuckTimer = setTimeout(function () {
+    if (window.appLoaded) return;
+    bootEl.classList.remove('hidden');
+    bootEl.innerHTML = 'No se pudo terminar de cargar la app.<br>' +
+      '<button type="button" onclick="location.reload()" ' +
+      'style="margin-top:8px;background:#7C4DFF;color:#fff;border:none;' +
+      'border-radius:8px;padding:8px 18px;font-size:13px;font-weight:600;">Reintentar</button>';
+  }, 18000);
+  window.addEventListener('load', function () {
+    // Si app.js sí llegó a ejecutarse, ya habrá puesto window.appLoaded
+    // antes de este evento; si no, dejamos los avisos programados arriba.
+    if (window.appLoaded) {
+      clearTimeout(slowTimer);
+      clearTimeout(stuckTimer);
+      bootEl.classList.add('hidden');
+    }
+  });
+})();
+</script>
 
 <!-- ===== MAIN APP ===== -->
 <div id="screen-app" class="screen hidden">

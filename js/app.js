@@ -1,3 +1,9 @@
+// Marca que este script sí se descargó y empezó a ejecutarse. La pantalla
+// de login (index.html) usa esta bandera para saber si debe mostrar un
+// aviso de "tardando" o un botón de "Reintentar" cuando la carga es lenta
+// o falla (típico en datos móviles con señal débil).
+window.appLoaded = true;
+
 // ===== ESTADO GLOBAL =====
 // URL de producción del Apps Script. Se usa como respaldo cuando un
 // dispositivo nuevo todavía no tiene nada guardado en Configuración, para
